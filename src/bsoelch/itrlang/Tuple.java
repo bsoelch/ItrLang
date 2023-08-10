@@ -1,8 +1,6 @@
 package bsoelch.itrlang;
 
 class Tuple extends Stack<Value> implements Value {
-    boolean printing;
-
     Tuple(Value... elts) {
         super(elts);
     }
@@ -34,23 +32,18 @@ class Tuple extends Stack<Value> implements Value {
         return false;
     }
 
+    /**first k elements of this tuple*/
     Tuple head(int k) {
         k = Math.max(0, Math.min(size(), k));
         return new Tuple(subList(0, k).toArray(new Value[0]));
     }
-
+    /**last k elements of this tuple*/
     Tuple tail(int k) {
         k = Math.max(0, Math.min(size(), k));
         return new Tuple(subList(size() - k, size()).toArray(new Value[0]));
     }
-
-    @Override
-    public synchronized String toString() {
-        if (printing)
-            return "( ... )";
-        printing = true;
-        String res = super.toString();
-        printing = false;
-        return res;
+    void truncate(int newSize){
+        if(newSize<size())
+            removeRange(newSize,size());
     }
 }
