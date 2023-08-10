@@ -1,0 +1,11 @@
+# ignore everything that is not explicitly allowed
+*
+# dont ignore gitignore
+!.gitignore
+# allow markdown files
+!*.md
+# allow files in src/ folder
+!src/
+!src/*/
+!src/bsoelch/itrlang/
+!src/bsoelch/itrlang/*
