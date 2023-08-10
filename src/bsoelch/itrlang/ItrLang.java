@@ -74,12 +74,18 @@ public class ItrLang {
         if(a.isNumber()&&b.isNumber()){
             return f.apply((NumberValue)a,(NumberValue)b);
         }
-        // TODO handle matrices
+        // unwrap matrices
+        if(a instanceof Matrix)
+            a=((Matrix) a).rows;
+        if(b instanceof Matrix)
+            b=((Matrix) b).rows;
         if(a.isNumber()&&b instanceof Tuple){
-            return new Tuple(((Tuple) b).stream().map(x->binaryNumberOp(a,x,f)).toArray(Value[]::new));
+            Value finalA = a;
+            return new Tuple(((Tuple) b).stream().map(x->binaryNumberOp(finalA,x,f)).toArray(Value[]::new));
         }
         if(a instanceof Tuple&&b.isNumber()){
-            return new Tuple(((Tuple) a).stream().map(x->binaryNumberOp(x,b,f)).toArray(Value[]::new));
+            Value finalB = b;
+            return new Tuple(((Tuple) a).stream().map(x->binaryNumberOp(x, finalB,f)).toArray(Value[]::new));
         }
         if(a instanceof Tuple&&b instanceof Tuple){
             Tuple res=new Tuple();
@@ -420,6 +426,9 @@ public class ItrLang {
 
     static Tuple stack=new Tuple();// addLater? store stack in object
     static Stack<Tuple> stackStack=new Stack<>();
+    static class StackRow extends Tuple{
+        StackRow(Value ... elts){super(elts);}
+    }
 
     static int readInstruction(ArrayList<Integer> sourceCode,int ip){
         return ip>=0&&ip< sourceCode.size()?sourceCode.get(ip):'\0';
@@ -443,8 +452,17 @@ public class ItrLang {
     }
     static void closeStack(){
         Tuple prevStack = stackStack.popOrDefault(new Tuple());
-        //TODO stack rows
-        prevStack.push(stack);
+        int i=0;
+        while(i<stack.size()&&stack.get(i) instanceof StackRow)
+            i++;
+        if(i>0){
+            StackRow tail=new StackRow(stack.subList(i,stack.size()).toArray(Value[]::new));
+            stack.truncate(i);
+            stack.push(tail);
+            prevStack.push(new Matrix(stack));
+        }else {
+            prevStack.push(stack);
+        }
         stack = prevStack;
     }
 
@@ -733,9 +751,13 @@ public class ItrLang {
                     openStack();
                     break;
                 case ',':{ // create new stack row
-                    //TODO stack rows
-                    throw new UnsupportedOperationException();
-                }//break;
+                    int i=0;
+                    while (i<stack.size()&&stack.get(i) instanceof StackRow)
+                        i++;
+                    StackRow tail=new StackRow(stack.subList(i,stack.size()).toArray(Value[]::new));
+                    stack.truncate(i);
+                    stack.push(tail);
+                }break;
                 case ')':{//end tuple
                     closeStack();
                 }break;
@@ -1269,7 +1291,7 @@ public class ItrLang {
     }
 
     public static void main(String[] args) throws IOException {
-        String code="((1 2)(3 4))®2^";
+        String code="(1 2,3 4)²";
         if(args.length>0){//TODO flags -u -> unicode source -f binary source
             code=ItrLang.loadCode(new File(args[0]),true);
         }
