@@ -4,6 +4,7 @@ import java.io.*;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.MathContext;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -458,12 +459,191 @@ public class ItrLang {
         if(i>0){
             StackRow tail=new StackRow(stack.subList(i,stack.size()).toArray(Value[]::new));
             stack.truncate(i);
-            stack.push(tail);
+            pushValue(tail);
             prevStack.push(new Matrix(stack));
         }else {
             prevStack.push(stack);
         }
         stack = prevStack;
+    }
+
+    /**simulate a UTF8 input stream independent of the system encoding*/
+    static abstract class UTF8Input extends InputStream{
+        public abstract int read() throws IOException;
+        int readCodepoint() throws IOException {
+            int s=read();
+            if(s<0)
+                return -1;
+            long cp=ItrLang.readCodepoint(s,this);
+            return (int)cp;// addLater? allow codepoints outside int range
+        }
+        @SuppressWarnings("SameParameterValue")
+        static UTF8Input fromBytes(InputStream stream){
+            return new UTF8Input(){
+                @Override
+                public int read() throws IOException {
+                    return stream.read();
+                }
+            };
+        }
+        @SuppressWarnings("SameParameterValue")
+        static UTF8Input fromChars(InputStreamReader stream){
+            Iterator<byte[]> lines=new BufferedReader(stream).lines()
+                    .map(l->(l+'\n').getBytes(StandardCharsets.UTF_8)).iterator();
+            return new UTF8Input(){
+                byte[] bytes;
+                int offset;
+                boolean nextLine() throws IOException {
+                    try{
+                        bytes=lines.next();
+                    }catch (UncheckedIOException uio){
+                        throw uio.getCause();
+                    }
+                    offset=0;
+                    return false;
+                }
+                @Override
+                public int read() throws IOException {
+                    if(offset==0){
+                        if(nextLine())
+                            return -1;
+                    }
+                    return bytes[offset++]&0xff;
+                }
+            };
+        }
+    }
+    static UTF8Input in;
+    static{
+        Console c=System.console();
+        if (c == null||c.charset().equals(StandardCharsets.UTF_8))
+            in=UTF8Input.fromBytes(System.in);
+        else // translate native encoding to UTF8
+            in=UTF8Input.fromChars(new InputStreamReader(System.in,c.charset()));
+    }
+
+    static long decodeCompressedUTF8(byte[] bytes, int l){
+        if(l<=1)
+            return bytes[0]&0xff;
+        long cp=0;
+        // get difference of high bits from expected value
+        for(int i=1;i<l;i++){
+            cp<<=2;cp|=((bytes[i]&0xff)>>6)^2;
+        }
+        // get bits stored in first byte
+        cp<<=8-l;
+        cp|=bytes[0]&(0xff>>l);
+        // get bits stored in later bytes
+        for(int i=1;i<l;i++){
+            cp<<=6;cp|=(bytes[i]&0x3f);
+        }
+        return cp;
+    }
+    static long readCodepoint(int start,InputStream in) throws IOException {
+        int l=(start==0xFF)?8:((start&0xFE)==0xFE)?7:((start&0xFC)==0xFC)?6:((start&0xF8)==0xF8)?5:
+                ((start&0xF0)==0xF0)?4:((start&0xE0)==0xE0)?3:((start&0xC0)==0xC0)?2:1;
+        byte[] bytes=new byte[8];
+        bytes[0]=(byte)start;
+        for(int i=1;i<l;i++){
+            start=in.read();
+            if(start==-1)
+                start=0x80;
+            bytes[i]=(byte)start;
+        }
+        return decodeCompressedUTF8(bytes,l);
+    }
+    static void readCodepoint(int start,InputStream in,StringBuilder out) throws IOException {
+        // addLater allow codepoints outside unicode range
+        out.append(Character.toString((int)readCodepoint(start,in)));
+    }
+    static boolean isItrSpace(int codepoint){
+        return contains(new int[]{' ','\n','\t','\r'},codepoint);
+    }
+
+    static Value parseValue(ArrayList<Integer> str){
+        if(str.size()==0)
+            return Int.ZERO;
+        if(str.get(0)=='"'){
+            Tuple buff=new Tuple();
+            for(int i=1;i<str.size();i++){//read until next "
+                if(str.get(i)=='\\'){//escape sequences
+                    if(i+1==str.size()){
+                        buff.add(new Int(BigInteger.valueOf('\\')));
+                        continue;
+                    }
+                    //noinspection RedundantCast
+                    switch ((int)str.get(++i)) {
+                        case 't' -> buff.add(new Int(BigInteger.valueOf('\t')));
+                        case 'n' -> buff.push(new Int(BigInteger.valueOf('\n')));
+                        case 'r' -> buff.push(new Int(BigInteger.valueOf('\r')));
+                        default -> buff.push(new Int(BigInteger.valueOf(str.get(i))));
+                    }
+                    continue;
+                }
+                if(str.get(i)=='"'){//unescaped " -> end of string
+                    if(i<str.size()-1)
+                        throw new IllegalArgumentException("unexpected end of string literal");
+                    break;
+                }
+                buff.push(new Int(BigInteger.valueOf(str.get(i))));
+            }
+            return buff;
+        }
+        // TODO parse brackets
+        throw new UnsupportedOperationException("unimplemented");
+    }
+    static void readBracket(int left,int right,ArrayList<Integer> buff) throws IOException {
+        buff.add(left);
+        int k=1;
+        int cp=in.readCodepoint();
+        while(cp>=0&&k>0){
+            if(cp==left)
+                k++;
+            if(cp==right)
+                k--;
+            buff.add(cp);
+            if(k>0)
+                cp=in.readCodepoint();
+        }
+        pushValue(parseValue(buff));
+    }
+    static void readValue() throws IOException {
+        int cp=in.readCodepoint();
+        while(isItrSpace(cp))//skip leading spaces
+            cp=in.readCodepoint();
+        ArrayList<Integer> buff=new ArrayList<>();
+        if(cp=='"'){
+            buff.add(cp);
+            cp=in.readCodepoint();
+            while(cp>=0){
+                if(cp=='"') {
+                    buff.add(cp);
+                    break;
+                }
+                if(cp=='\\'){
+                    buff.add(cp);
+                    cp=in.readCodepoint();
+                }
+                buff.add(cp);
+                cp=in.readCodepoint();
+            }
+            pushValue(parseValue(buff));
+            return;
+        }else if(cp=='['){
+            readBracket('[',']',buff);
+        }else if(cp=='{'){
+            readBracket('{','}',buff);
+        }else if(cp=='('){
+            readBracket('(',')',buff);
+        }
+        while(cp>0&&!isItrSpace(cp)) {//skip leading spaces
+            buff.add(cp);
+            cp = in.readCodepoint();
+        }
+        pushValue(new Tuple(buff.stream().map(c->new Int(BigInteger.valueOf(c))).toArray(Value[]::new)));
+    }
+    static void writeCodepoint(int cp){
+        System.out.print(Character.toString(cp));
     }
 
     static final int[] overwriteBlacklist=new int[]{';',' ','\n','»','«','"','\'','(',',',')','©','?','!','[',']'};
@@ -581,24 +761,24 @@ public class ItrLang {
         return ip-(op==';'?1:0);
     }
 
-    static void iteratorOpMap(Tuple v, ArrayList<Integer> code) {
+    static void iteratorOpMap(Tuple v, ArrayList<Integer> code) throws IOException {
         for(Value e:v){
-            stack.push(e);
+            pushValue(e);
             interpret(code);
         }
     }
-    static void iteratorOpReduce(Tuple v, ArrayList<Integer> code) {
+    static void iteratorOpReduce(Tuple v, ArrayList<Integer> code) throws IOException {
         if(v.size()==0)
             return;
-        stack.push(v.get(0));
+        pushValue(v.get(0));
         if(v.size()==1)
             return;
         for(Value e:v.subList(1,v.size())){
-            stack.push(e);
+            pushValue(e);
             interpret(code);
         }
     }
-    static void iteratorOpSubsets(Tuple v, ArrayList<Integer> code) {
+    static void iteratorOpSubsets(Tuple v, ArrayList<Integer> code) throws IOException {
         BigInteger setId=BigInteger.ZERO,mask;
         int i;
         while(setId.bitLength()<=v.size()){
@@ -611,49 +791,49 @@ public class ItrLang {
                 mask=mask.shiftLeft(1);
                 i++;
             }
-            stack.push(set);
+            pushValue(set);
             interpret(code);
             setId=setId.add(BigInteger.ONE);
         }
     }
-    static void iteratorOpZip(Tuple l,Tuple r, ArrayList<Integer> code) {
+    static void iteratorOpZip(Tuple l,Tuple r, ArrayList<Integer> code) throws IOException {
         int i=0;
         for(;i<l.size()&&i<r.size();i++){
-            stack.push(l.get(i));
-            stack.push(r.get(i));
+            pushValue(l.get(i));
+            pushValue(r.get(i));
             interpret(code);
         }
         for(;i<l.size();i++){
-            stack.push(l.get(i));
-            stack.push(Int.ZERO);
+            pushValue(l.get(i));
+            pushValue(Int.ZERO);
             interpret(code);
         }
         for(;i<r.size();i++){
-            stack.push(Int.ZERO);
-            stack.push(r.get(i));
+            pushValue(Int.ZERO);
+            pushValue(r.get(i));
             interpret(code);
         }
     }
-    static void iteratorOpCauchy(Tuple l,Tuple r, ArrayList<Integer> code) {
+    static void iteratorOpCauchy(Tuple l,Tuple r, ArrayList<Integer> code) throws IOException {
         for(int s=0;s<l.size()+r.size()-1;s++){
             for(int i=Math.max(0,s-r.size()+1);i<l.size();i++){
-                stack.push(l.get(i));
-                stack.push(r.get(s-i));
+                pushValue(l.get(i));
+                pushValue(r.get(s-i));
                 interpret(code);
             }
         }
     }
-    static void iteratorOpTimes(Tuple l,Tuple r, ArrayList<Integer> code) {
+    static void iteratorOpTimes(Tuple l,Tuple r, ArrayList<Integer> code) throws IOException {
         for (Value value : l) {
             for (Value item : r) {
-                stack.push(value);
-                stack.push(item);
+                pushValue(value);
+                pushValue(item);
                 interpret(code);
             }
         }
     }
 
-    static void interpret(ArrayList<Integer> sourceCode) {
+    static void interpret(ArrayList<Integer> sourceCode) throws IOException {
         boolean numberMode=false;
 
         int command;
@@ -665,33 +845,29 @@ public class ItrLang {
             if(command=='\''){
                 command=readInstruction(sourceCode,ip++);
                 //push char as string
-                stack.push(new Tuple(new Int(BigInteger.valueOf(command))));
+                pushValue(new Tuple(new Int(BigInteger.valueOf(command))));
                 continue;
             }
             if(command=='"'){
-                StringBuilder str=new StringBuilder();
-                str.append('"');//position of "
+                ArrayList<Integer> str=new ArrayList<>();
+                str.add((int)'"');//position of "
                 while(ip<sourceCode.size()){
                     command=readInstruction(sourceCode,ip++);
-                    str.append(Character.toString(command));
+                    str.add(command);
                     if(command=='"'){
+                        str.add((int)'"');
                         break;
                     }
                     if(command=='\\'){
                         command=readInstruction(sourceCode,ip++);
-                        str.append(Character.toString(command));
+                        str.add(command);
                     }
                 }
-                //TODO decode escape sequences
-                // str=parseString(str);
-
-                // push code-points of string as tuple
-                stack.push(new Tuple(str.toString().codePoints().boxed()
-                        .map(c->new Int(BigInteger.valueOf(c))).toArray(Value[]::new)));
+                pushValue(parseValue(str));
                 continue;
             }
             if(command=='»'){
-                StringBuilder str=new StringBuilder();
+                Tuple str=new Tuple();
                 int level=1;
                 while(ip<sourceCode.size()){
                     command=readInstruction(sourceCode,ip++);
@@ -702,11 +878,10 @@ public class ItrLang {
                     }else if(command=='»'){
                         level++;
                     }
-                    str.append(Character.toString(command));
+                    str.add(new Int(BigInteger.valueOf(command)));
                 }
                 // push code-points of string as tuple
-                stack.push(new Tuple(str.toString().codePoints().boxed()
-                        .map(c->new Int(BigInteger.valueOf(c))).toArray(Value[]::new)));
+                pushValue(str);
             }
             if(opOverwrites.containsKey(command)){
                 numberMode=false;
@@ -756,7 +931,7 @@ public class ItrLang {
                         i++;
                     StackRow tail=new StackRow(stack.subList(i,stack.size()).toArray(Value[]::new));
                     stack.truncate(i);
-                    stack.push(tail);
+                    pushValue(tail);
                 }break;
                 case ')':{//end tuple
                     closeStack();
@@ -820,21 +995,34 @@ public class ItrLang {
                     popValue();
                 }break;
                 // IO
-                case '_':{// read char
-                    // TODO read char
+                case '_':{// read byte
+                    pushValue(BigInteger.valueOf(in.read()));
                 }break;
                 case '#':{// parse word
-                    //  readWord();
-                    // TODO readWord()
+                    readValue();
                 }break;
-                // XXX read single line, read word
+                // addLater read char, read bytes
+                // addLater read single line, read word
                 case '§':{// read "paragraph" (read all characters until first empty line)
-                    // TODO read paragraph
+                    Tuple paragraph=new Tuple();
+                    int c=in.readCodepoint();
+                    while(c>=0){
+                        if(c=='\n'){
+                            c=in.readCodepoint();
+                            if(c=='\n')//double-new line
+                                break;
+                            paragraph.add(new Int(BigInteger.valueOf('\n')));
+                            continue;
+                        }
+                        paragraph.add(new Int(BigInteger.valueOf(c)));
+                        c=in.readCodepoint();
+                    }
+                    pushValue(paragraph);
                 }break;
                 case '¥':{// write char(s)
                     Tuple t=popValue().asTuple();
                     t.stream().flatMap(ItrLang::flatten).
-                            forEach(b->System.out.write(b.asInt().mod(BigInteger.valueOf(256)).intValueExact()));
+                            forEach(b->writeCodepoint(b.asInt().add(BigInteger.valueOf(0xff)).intValueExact()));
                 }break;
                 case '£':{// write value
                     System.out.print(popValue());
@@ -909,15 +1097,18 @@ public class ItrLang {
                 }break;
                 case '¬':{
                     Value a=popValue();
-                    pushValue(unaryNumberOp(a,x->new Int(compareNumbers(x,Int.ZERO)==0?BigInteger.ONE:BigInteger.ZERO)));
+                    pushValue(unaryNumberOp(a,x->compareNumbers(x,Int.ZERO)==0?Int.ONE:Int.ZERO));
                 }break;
                 case '¿':{
                     Value a=popValue();
-                    pushValue(unaryNumberOp(a,x->new Int(compareNumbers(x,Int.ZERO)==0?BigInteger.ZERO:BigInteger.ONE)));
+                    pushValue(unaryNumberOp(a,x->compareNumbers(x,Int.ZERO)==0?Int.ZERO:Int.ONE));
                 }break;
                 case 's':{//sign
                     Value a=popValue();
-                    pushValue(unaryNumberOp(a,x->{int c=compareNumbers(x,Int.ZERO);return new Int(BigInteger.valueOf(c>0?1:c<0?-1:0));}));
+                    pushValue(unaryNumberOp(a,x->{
+                        int c=compareNumbers(x,Int.ZERO);
+                        return new Int(BigInteger.valueOf(c>0?1:c<0?-1:0));
+                    }));
                 }break;
                 case 'a':{//absolute value/determinant
                     Value a=popValue();
@@ -987,7 +1178,7 @@ public class ItrLang {
                      else if(a instanceof Matrix)
                         pushValue(new Int(BigInteger.valueOf(((Matrix)a).nrows())));
                     else
-                        pushValue(new Int(BigInteger.ONE));
+                        pushValue(Int.ONE);
                 }break;
                 case 'e':{//exponential
                     Value a=popValue();
@@ -1130,7 +1321,7 @@ public class ItrLang {
                         //number is treated as if it were the 1-based range starting at that number
                         //XXX? handle complex numbers
                         NumberValue x=(NumberValue) v;
-                        NumberValue P=new Int(BigInteger.ONE);
+                        NumberValue P=Int.ONE;
                         for(BigInteger i=BigInteger.ONE;compareNumbers(new Int(i),x)<=0;i=i.add(BigInteger.ONE))
                             P=multiplyNumbers(P,new Int(i));
                         pushValue(P);
@@ -1140,7 +1331,7 @@ public class ItrLang {
                     @SuppressWarnings("unchecked")
                     Function<Tuple,Value>[] f=(Function<Tuple,Value>[])new Function[1];
                     f[0]=(t)->{
-                        final Value[] res=new Value[]{new Int(BigInteger.ONE)};
+                        final Value[] res=new Value[]{Int.ONE};
                         t.forEach(e-> res[0]=multiply(res[0],e instanceof Tuple?f[0].apply((Tuple)e):e));
                         return res[0];
                     };
@@ -1158,7 +1349,7 @@ public class ItrLang {
                     BigInteger M=ints.stream().reduce(BigInteger.ZERO,(m, e) -> e.compareTo(m) > 0 ? e : m);
                     Tuple res=new Tuple();
                     res.addAll(Collections.nCopies(M.intValueExact()+1,Int.ZERO));
-                    ints.forEach(e->{if(e.signum()>=0)res.set(e.intValueExact(),new Int(BigInteger.ONE));});
+                    ints.forEach(e->{if(e.signum()>=0)res.set(e.intValueExact(),Int.ONE);});
                     pushValue(res);
                 }break;
                 case '@':{//replace number with corresponding element of vector
@@ -1198,37 +1389,6 @@ public class ItrLang {
     }
 
 
-    public static long decodeCompressedUTF8(byte[] bytes, int l){
-        if(l<=1)
-            return bytes[0];
-        long cp=0;
-        // get difference of high bits from expected value
-        for(int i=1;i<l;i++){
-            cp<<=2;cp|=((bytes[i]&0xff)>>6)^2;
-        }
-        // get bits stored in first byte
-        cp<<=8-l;
-        cp|=bytes[0]&(0xff>>l);
-        // get bits stored in later bytes
-        for(int i=1;i<l;i++){
-            cp<<=6;cp|=(bytes[i]&0x3f);
-        }
-        return cp;
-    }
-    public static void readCodepoint(int start,InputStream in,StringBuilder out) throws IOException {
-        int l=(start==0xFF)?8:((start&0xFE)==0xFE)?7:((start&0xFC)==0xFC)?6:((start&0xF8)==0xF8)?5:
-                ((start&0xF0)==0xF0)?4:((start&0xE0)==0xE0)?3:((start&0xC0)==0xC0)?2:1;
-        byte[] bytes=new byte[8];
-        bytes[0]=(byte)start;
-        for(int i=1;i<l;i++){
-            start=in.read();
-            if(start==-1)
-                start=0x80;
-            bytes[i]=(byte)start;
-        }
-        // addLater allow codepoints outside unicode range
-        out.append(Character.toString((int)decodeCompressedUTF8(bytes,l)));
-    }
     public static String loadCode(File src,boolean utf8Mode) throws IOException {
         // TODO read to list of integers instead of Sting
         StringBuilder code = new StringBuilder();
@@ -1284,14 +1444,14 @@ public class ItrLang {
         }
     }
     // TODO code -> byte conversion
-    public static void run(String code) {
+    public static void run(String code) throws IOException {
         // TODO implicit input (if no explicit input)
         interpret(new ArrayList<>(code.codePoints().boxed().toList()));
         //TODO implicitly print top stack value (if no explicit output)
     }
 
     public static void main(String[] args) throws IOException {
-        String code="(1 2,3 4)²";
+        String code="#";
         if(args.length>0){//TODO flags -u -> unicode source -f binary source
             code=ItrLang.loadCode(new File(args[0]),true);
         }
