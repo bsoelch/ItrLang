@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.Objects;
 
-record Int(BigInteger value) implements NumberValue {
+public record Int(BigInteger value) implements NumberValue {
     public static final Int ZERO=new Int(BigInteger.ZERO);
     public static final Int ONE=new Int(BigInteger.ONE);
     @Override

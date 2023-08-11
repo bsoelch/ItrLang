@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.NoSuchElementException;
 
-class Stack<T> extends ArrayList<T> {
+public class Stack<T> extends ArrayList<T> {
     public Stack() {
         super();
     }

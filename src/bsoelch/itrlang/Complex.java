@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.MathContext;
 
-record Complex(BigDecimal real, BigDecimal imaginary) implements NumberValue {
+public record Complex(BigDecimal real, BigDecimal imaginary) implements NumberValue {
     // TODO change complex to also support fraction as real/imaginary part
     public static final Complex ONE = new Complex(BigDecimal.ONE, BigDecimal.ZERO);
     public static final Complex I = new Complex(BigDecimal.ZERO, BigDecimal.ONE);

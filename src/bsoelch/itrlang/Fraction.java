@@ -3,9 +3,9 @@ package bsoelch.itrlang;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 
-record Fraction(BigInteger numerator, BigInteger denominator) implements NumberValue {
+public record Fraction(BigInteger numerator, BigInteger denominator) implements NumberValue {
 
-    Fraction {
+    public Fraction {
         if (denominator.signum() < 0) {
             numerator = numerator.negate();
             denominator = denominator.negate();

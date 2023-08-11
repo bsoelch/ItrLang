@@ -1,6 +1,6 @@
 package bsoelch.itrlang;
 
-class Tuple extends Stack<Value> implements Value {
+public class Tuple extends Stack<Value> implements Value {
     Tuple(Value... elts) {
         super(elts);
     }

@@ -3,7 +3,7 @@ package bsoelch.itrlang;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 
-record Real(BigDecimal value) implements NumberValue {
+public record Real(BigDecimal value) implements NumberValue {
     @Override
     public BigInteger asInt() {
         return value.toBigInteger();
