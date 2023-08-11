@@ -139,7 +139,7 @@ public class ItrLang {
         if(a.isReal()&&b.isReal())
             return new Real(a.asReal().multiply(b.asReal(),mathContext));
         if(a.isNumber()&&b.isNumber())
-            return Complex.subtract(a.asComplex(),b.asComplex(),mathContext);
+            return Complex.multiply(a.asComplex(),b.asComplex(),mathContext);
         throw new IllegalArgumentException("unsupported operands of multiplication: "+a.getClass().getName()+"   "+a.getClass().getName());
     }
 
@@ -560,8 +560,114 @@ public class ItrLang {
         return contains(new int[]{' ','\n','\t','\r'},codepoint);
     }
 
-    static Value parseValue(ArrayList<Integer> str){
-        if(str.size()==0)
+
+    private static int findMatchingBracket(List<Integer> str,int i,int left,int right){
+        int k=1;
+        while(i++<str.size()&&k>0){
+            if(str.get(i)==left)
+                k++;
+            if(str.get(i)==right)
+                k--;
+        }
+        return i;
+    }
+    private interface ParserToken{}
+    private record ValueToken(NumberValue value) implements ParserToken{}
+    private record OperatorToken(int op) implements ParserToken{}
+    private static Value tryParseNumber(List<Integer> str) {
+        ArrayList<ParserToken> expr=new ArrayList<>();
+        StringBuilder current=new StringBuilder();
+        int base=10;//supported bases: 2-10 or 16
+        for(int c:str){
+            if(c>='0'&&(c<=Math.min('0'+(base-1),'9'))){
+                current.append((char)c);
+                continue;
+            }
+            if(base==16&&((c>='A'&&c<='F')||(c>='a'&&c<='f'))){
+                current.append((char)c);
+                continue;
+            }
+            if(current.toString().equals("0")&&c=='x'){//hex literal
+                base=16;
+                continue;
+            }
+            if(current.toString().equals("0")&&c=='b'){//binary literal
+                base=2;
+                continue;
+            }
+            if(isItrSpace(c)){
+                if(!current.isEmpty()){
+                    expr.add(new ValueToken(new Int(new BigInteger(current.toString(),base))));
+                }
+                base=10;
+                current.setLength(0);
+                continue;
+            }
+            if(contains(new int[]{'+','-','*','/','I','J','K','i','j','k'},c)){
+                if(!current.isEmpty()){
+                    expr.add(new ValueToken(new Int(new BigInteger(current.toString(),base))));
+                }
+                base=10;
+                expr.add(new OperatorToken(c));
+                current.setLength(0);
+                continue;
+            }
+            return null;//invalid char
+        }
+        if(!current.isEmpty()){
+            expr.add(new ValueToken(new Int(new BigInteger(current.toString(),base))));
+        }
+        for(int i=0;i<expr.size();i++){// '\' and imaginary units
+            if(expr.get(i) instanceof OperatorToken&&((OperatorToken) expr.get(i)).op=='/'){
+                NumberValue l=Int.ONE,r=Int.ONE;
+                if(i>0&&expr.get(i-1) instanceof ValueToken){
+                    l=((ValueToken) expr.remove(i - 1)).value;
+                    i--;
+                }
+                if(i+1<expr.size()&&expr.get(i+1) instanceof ValueToken){
+                    r=((ValueToken) expr.remove(i + 1)).value;
+                }
+                expr.set(i,new ValueToken(realDivide(l,r)));
+            }else if(expr.get(i) instanceof OperatorToken&&contains(new int[]{'I','J','K','i','j','k'},((OperatorToken) expr.get(i)).op)){
+                NumberValue v=Int.ONE;
+                if(i>0&&expr.get(i-1) instanceof ValueToken){
+                    v=((ValueToken) expr.remove(i - 1)).value;
+                    i--;
+                }
+                expr.set(i,new ValueToken(multiplyNumbers(v,Complex.I)));
+            }
+        }
+        for(int i=0;i<expr.size();i++){// '*' (has to be parsed after imaginary units
+            if(expr.get(i) instanceof OperatorToken&&((OperatorToken) expr.get(i)).op=='*'){
+                NumberValue l=Int.ONE,r=Int.ONE;
+                if(i>0&&expr.get(i-1) instanceof ValueToken){
+                    l=((ValueToken) expr.remove(i - 1)).value;
+                    i--;
+                }
+                if(i+1<expr.size()&&expr.get(i+1) instanceof ValueToken){
+                    r=((ValueToken) expr.remove(i + 1)).value;
+                }
+                expr.set(i,new ValueToken(multiplyNumbers(l,r)));
+            }
+        }
+        for(int i=0;i<expr.size();i++){// '+' and '-'
+            if(expr.get(i) instanceof OperatorToken&&(((OperatorToken) expr.get(i)).op=='+'||((OperatorToken) expr.get(i)).op=='-')){
+                boolean plus=((OperatorToken) expr.get(i)).op=='+';
+                NumberValue l=Int.ZERO,r=Int.ZERO;
+                if(i>0&&expr.get(i-1) instanceof ValueToken){
+                    l=((ValueToken) expr.remove(i - 1)).value;
+                    i--;
+                }
+                if(i+1<expr.size()&&expr.get(i+1) instanceof ValueToken){
+                    r=((ValueToken) expr.remove(i + 1)).value;
+                }
+                expr.set(i,new ValueToken(plus?addNumbers(l,r):subtractNumbers(l,r)));
+            }
+        }
+        return ((ValueToken)expr.get(0)).value;
+    }
+    static Value parseValue(List<Integer> str){
+        if(str.isEmpty())
             return Int.ZERO;
         if(str.get(0)=='"'){
             Tuple buff=new Tuple();
@@ -589,9 +695,95 @@ public class ItrLang {
             }
             return buff;
         }
-        // TODO parse brackets
-        throw new UnsupportedOperationException("unimplemented");
+        if(str.get(0)=='['||str.get(0)=='{'){
+            Tuple buff=new Tuple();
+            int i=0;
+            while(i++<str.size()){
+                while(isItrSpace(str.get(i)))i++;
+                int i0=i;
+                if(str.get(i)=='['){
+                    i=findMatchingBracket(str,i,'[',']');
+                    buff.push(parseValue(str.subList(i0,i)));
+                    //addLater? report illegal characters
+                    while(i<str.size()&&str.get(i)!=','&&str.get(i)!=']'&&str.get(i)!='}')i++;
+                }else if(str.get(i)=='{'){
+                    i=findMatchingBracket(str,i,'{','}');
+                    buff.push(parseValue(str.subList(i0,i)));
+                    while(i<str.size()&&str.get(i)!=','&&str.get(i)!=']'&&str.get(i)!='}')i++;
+                }else if(str.get(i)=='('){
+                    i=findMatchingBracket(str,i,'(',')');
+                    buff.push(parseValue(str.subList(i0,i)));
+                    while(i<str.size()&&str.get(i)!=','&&str.get(i)!=']'&&str.get(i)!='}')i++;
+                }else if(str.get(i)=='"'){
+                    while(i++<str.size()){
+                        if(str.get(i)=='"')
+                            break;
+                        if(str.get(i)=='\\')
+                            i++;
+                    }
+                    buff.push(parseValue(str.subList(i0,i)));
+                    while(i<str.size()&&str.get(i)!=','&&str.get(i)!=']'&&str.get(i)!='}')i++;
+                }else{
+                    while(i<str.size()&&str.get(i)!=','&&str.get(i)!=']'&&str.get(i)!='}')i++;
+                    if(i0!=i||(str.get(i)!=']'&&str.get(i)!='}'))
+                        buff.push(parseValue(str.subList(i0,i)));
+                }
+                if(str.get(i)==']'||str.get(i)=='}')
+                    break;
+            }
+            return buff;
+        }
+        if(str.get(0)=='('){
+            Tuple rows=new Tuple();
+            Tuple buff=new Tuple();
+            int i=0;
+            while(i++<str.size()){
+                while(isItrSpace(str.get(i)))i++;
+                int i0=i;
+                if(str.get(i)=='['){
+                    i=findMatchingBracket(str,i,'[',']');
+                    buff.push(parseValue(str.subList(i0,i)));
+                }else if(str.get(i)=='{'){
+                    i=findMatchingBracket(str,i,'{','}');
+                    buff.push(parseValue(str.subList(i0,i)));
+                }else if(str.get(i)=='('){
+                    i=findMatchingBracket(str,i,'(',')');
+                    buff.push(parseValue(str.subList(i0,i)));
+                }else if(str.get(i)=='"'){
+                    while(i++<str.size()){
+                        if(str.get(i)=='"')
+                            break;
+                        if(str.get(i)=='\\')
+                            i++;
+                    }
+                    buff.push(parseValue(str.subList(i0,i)));
+                }else{
+                    while(i<str.size()&&!isItrSpace(str.get(i))&&str.get(i)!=','&&str.get(i)!='('&&str.get(i)!=')')i++;
+                    if(i0!=i||(str.get(i)!=')'))
+                        buff.push(parseValue(str.subList(i0,i)));
+                }
+                if(str.get(i)==')')
+                    break;
+                if(str.get(i)==','){
+                    rows.push(buff);
+                    buff=new Tuple();
+                }
+                if(contains(new int[]{'(','[','{','"'},str.get(i)))
+                    i--;//ensure opening bracket is not skipped
+            }
+            if(!rows.isEmpty()){
+                if(!buff.isEmpty())
+                    rows.push(buff);
+                return new Matrix(rows);
+            }
+            return buff;
+        }
+        Value v=tryParseNumber(str);
+        if(v!=null)
+            return v;
+        return new Tuple(str.stream().map(i->new Int(BigInteger.valueOf(i))).toArray(Value[]::new));
     }
+
     static void readBracket(int left,int right,ArrayList<Integer> buff) throws IOException {
         buff.add(left);
         int k=1;
@@ -631,16 +823,19 @@ public class ItrLang {
             return;
         }else if(cp=='['){
             readBracket('[',']',buff);
+            return;
         }else if(cp=='{'){
             readBracket('{','}',buff);
+            return;
         }else if(cp=='('){
             readBracket('(',')',buff);
+            return;
         }
         while(cp>0&&!isItrSpace(cp)) {//skip leading spaces
             buff.add(cp);
             cp = in.readCodepoint();
         }
-        pushValue(new Tuple(buff.stream().map(c->new Int(BigInteger.valueOf(c))).toArray(Value[]::new)));
+        pushValue(parseValue(buff));
     }
     static void writeCodepoint(int cp){
         System.out.print(Character.toString(cp));
@@ -768,7 +963,7 @@ public class ItrLang {
         }
     }
     static void iteratorOpReduce(Tuple v, ArrayList<Integer> code) throws IOException {
-        if(v.size()==0)
+        if(v.isEmpty())
             return;
         pushValue(v.get(0));
         if(v.size()==1)
@@ -907,484 +1102,491 @@ public class ItrLang {
                 continue;
             }
             numberMode=false;
-            switch(command){
-                /* already handled characters
-                case '0':case '1':case '2':case '3':case '4':
-                case '5':case '6':case '7':case '8':case '9'://digits have already been handled
-                case '"': case '\'':case '»': case '«'://string and char-literals have already been handled
-                */
-                case ' ':case '\t':case '\n':case '\r'://ignore spaces
-                    break;
+            switch (command) {
+                //noinspection DataFlowIssue (redundant switch labels)
+                case '0','1','2','3','4','5','6','7','8','9', // digits have already handled
+                        '"', '\'', '»', '«', //string and char-literals have already been handled
+                        '\t', '\n', '\r' -> {}//ignore spaces
                 //comments
-                case ';':
-                    while(ip++<sourceCode.size()){
-                        if(readInstruction(sourceCode,ip)=='\n')
+                case ';' -> {
+                    while (ip++ < sourceCode.size()) {
+                        if (readInstruction(sourceCode, ip) == '\n')
                             break;
                     }
-                    continue;
-                case '('://start tuple
-                    openStack();
-                    break;
-                case ',':{ // create new stack row
-                    int i=0;
-                    while (i<stack.size()&&stack.get(i) instanceof StackRow)
+                    // continue;
+                }
+                case '(' ->//start tuple
+                        openStack();
+                case ',' -> { // create new stack row
+                    int i = 0;
+                    while (i < stack.size() && stack.get(i) instanceof StackRow)
                         i++;
-                    StackRow tail=new StackRow(stack.subList(i,stack.size()).toArray(Value[]::new));
+                    StackRow tail = new StackRow(stack.subList(i, stack.size()).toArray(Value[]::new));
                     stack.truncate(i);
                     pushValue(tail);
-                }break;
-                case ')':{//end tuple
-                    closeStack();
-                }break;
+                }
+                case ')' -> //end tuple
+                        closeStack();
+
                 // control flow
-                case '©':
-                    Value code=popValue();
+                case '©' -> {
+                    Value code = popValue();
                     interpret(toCode(code));
-                    break;
-                case '?':// ? start if/while statement
-                    throw new Error("unimplemented");
-                    //break;
-                case '!':// ? else ? inverted if
-                    throw new Error("unimplemented");
-                    //break;
-                case '[':// end-if
-                    throw new Error("unimplemented");
-                    //break;
-                case ']':// end-while
-                    throw new Error("unimplemented");
-                    //break;
-                case '$':{// overwrite character
-                    Value v=popValue();
-                    command=readInstruction(sourceCode,ip);
-                    boolean autoCall=false;
-                    if(command=='©'){
-                        command=readInstruction(sourceCode,++ip);
-                        autoCall=true;
+                }
+                case '?' ->// ? start if/while statement
+                        throw new Error("unimplemented");
+
+                //break;
+                case '!' ->// ? else ? inverted if
+                        throw new Error("unimplemented");
+
+                //break;
+                case '[' ->// end-if
+                        throw new Error("unimplemented");
+
+                //break;
+                case ']' ->// end-while
+                        throw new Error("unimplemented");
+
+                //break;
+                case '$' -> {// overwrite character
+                    Value v = popValue();
+                    command = readInstruction(sourceCode, ip);
+                    boolean autoCall = false;
+                    if (command == '©') {
+                        command = readInstruction(sourceCode, ++ip);
+                        autoCall = true;
                     }
-                    if(contains(overwriteBlacklist,command)){
+                    if (contains(overwriteBlacklist, command)) {
                         continue;
                     }
                     ip++;//consume next character
-                    overwriteOp(command,v,autoCall);
-                }break;
+                    overwriteOp(command, v, autoCall);
+                }
+
                 // stack operations
-                case 'ä':{//dup
-                    Value a=peekValue();
+                case 'ä' -> {//dup
+                    Value a = peekValue();
                     pushValue(a);
-                }break;
-                case 'á':{//over
-                    Value a=popValue();
-                    Value b=peekValue();
-                    pushValue(a);
-                    pushValue(b);
-                }break;
-                case 'à':{//swap
-                    Value a=popValue();
-                    Value b=popValue();
+                }
+                case 'á' -> {//over
+                    Value a = popValue();
+                    Value b = peekValue();
                     pushValue(a);
                     pushValue(b);
-                }break;
-                case 'â':{//"under" (shorthand for swap, over) push top element below second element
-                    Value a=popValue();
-                    Value b=popValue();
+                }
+                case 'à' -> {//swap
+                    Value a = popValue();
+                    Value b = popValue();
+                    pushValue(a);
+                    pushValue(b);
+                }
+                case 'â' -> {//"under" (shorthand for swap, over) push top element below second element
+                    Value a = popValue();
+                    Value b = popValue();
                     pushValue(a);
                     pushValue(b);
                     pushValue(a);
-                }break;
-                case 'å':{//drop
-                    popValue();
-                }break;
+                }
+                case 'å' -> //drop
+                        popValue();
+
                 // IO
-                case '_':{// read byte
-                    pushValue(BigInteger.valueOf(in.read()));
-                }break;
-                case '#':{// parse word
-                    readValue();
-                }break;
+                case '_' -> // read byte
+                        pushValue(BigInteger.valueOf(in.read()));
+                case '#' -> // parse word
+                        readValue();
+
                 // addLater read char, read bytes
                 // addLater read single line, read word
-                case '§':{// read "paragraph" (read all characters until first empty line)
-                    Tuple paragraph=new Tuple();
-                    int c=in.readCodepoint();
-                    while(c>=0){
-                        if(c=='\n'){
-                            c=in.readCodepoint();
-                            if(c=='\n')//double-new line
+                case '§' -> {// read "paragraph" (read all characters until first empty line)
+                    Tuple paragraph = new Tuple();
+                    int c = in.readCodepoint();
+                    while (c >= 0) {
+                        if (c == '\n') {
+                            c = in.readCodepoint();
+                            if (c == '\n')//double-new line
                                 break;
                             paragraph.add(new Int(BigInteger.valueOf('\n')));
                             continue;
                         }
                         paragraph.add(new Int(BigInteger.valueOf(c)));
-                        c=in.readCodepoint();
+                        c = in.readCodepoint();
                     }
                     pushValue(paragraph);
-                }break;
-                case '¥':{// write char(s)
-                    Tuple t=popValue().asTuple();
+                }
+                case '¥' -> {// write char(s)
+                    Tuple t = popValue().asTuple();
                     t.stream().flatMap(ItrLang::flatten).
-                            forEach(b->writeCodepoint(b.asInt().add(BigInteger.valueOf(0xff)).intValueExact()));
-                }break;
-                case '£':{// write value
-                    System.out.print(popValue());
-                }break;
+                            forEach(b -> writeCodepoint(b.asInt().add(BigInteger.valueOf(0xff)).intValueExact()));
+                }
+                case '£' -> // write value
+                        System.out.print(popValue());
+
                 // TODO value from/to  string
                 // arithmetic operations
-                case '+':{
-                    Value b=popValue();
-                    Value a=popValue();
-                    pushValue(add(a,b));
-                }break;
-                case '-':{
-                    Value b=popValue();
-                    Value a=popValue();
-                    pushValue(binaryNumberOp(a,b,ItrLang::subtractNumbers));
-                }break;
-                case '·':{//point-wise multiplication
-                    Value b=popValue();
-                    Value a=popValue();
-                    pushValue(binaryNumberOp(a,b,ItrLang::multiplyNumbers));
-                }break;
-                case '÷':{// point-wise (fractional) division
-                    Value b=popValue();
-                    Value a=popValue();
-                    pushValue(binaryNumberOp(a,b,ItrLang::realDivide));
-                }break;
-                case ':':{//integer division
-                    Value b=popValue();
-                    Value a=popValue();
-                    pushValue(binaryNumberOp(a,b,ItrLang::intDivide));
-                }break;
-                case '%':{// remainder
-                    Value b=popValue();
-                    Value a=popValue();
-                    pushValue(binaryNumberOp(a,b,ItrLang::remainder));
-                }break;
-                case 'd':{//division and remainder
-                    Value b=popValue();
-                    Value a=popValue();
-                    pushValue(binaryNumberOp(a,b,ItrLang::remainder));
-                    pushValue(binaryNumberOp(a,b,ItrLang::intDivide));
-                }break;
-                case '&':{// bit-wise and
-                    Value b=popValue();
-                    Value a=popValue();
-                    pushValue(binaryNumberOp(a,b,ItrLang::andNumbers));
-                }break;
-                case '|':{//  bit-wise or
-                    Value b=popValue();
-                    Value a=popValue();
-                    pushValue(binaryNumberOp(a,b,ItrLang::orNumbers));
-                }break;
-                case 'x':{//  bit-wise xor
-                    Value b=popValue();
-                    Value a=popValue();
-                    pushValue(binaryNumberOp(a,b,ItrLang::xorNumbers));
-                }break;
-                case '>':{
-                    Value b=popValue();
-                    Value a=popValue();
-                    pushValue(binaryNumberOp(a,b,(x,y)->new Int(BigInteger.valueOf(compareNumbers(x,y)>0?1:0))));
-                }break;
-                case '=':{
-                    Value b=popValue();
-                    Value a=popValue();
-                    pushValue(binaryNumberOp(a,b,(x,y)->new Int(BigInteger.valueOf(compareNumbers(x,y)==0?1:0))));
-                }break;
-                case '<':{
-                    Value b=popValue();
-                    Value a=popValue();
-                    pushValue(binaryNumberOp(a,b,(x,y)->new Int(BigInteger.valueOf(compareNumbers(x,y)<0?1:0))));
-                }break;
-                case '¬':{
-                    Value a=popValue();
-                    pushValue(unaryNumberOp(a,x->compareNumbers(x,Int.ZERO)==0?Int.ONE:Int.ZERO));
-                }break;
-                case '¿':{
-                    Value a=popValue();
-                    pushValue(unaryNumberOp(a,x->compareNumbers(x,Int.ZERO)==0?Int.ZERO:Int.ONE));
-                }break;
-                case 's':{//sign
-                    Value a=popValue();
-                    pushValue(unaryNumberOp(a,x->{
-                        int c=compareNumbers(x,Int.ZERO);
-                        return new Int(BigInteger.valueOf(c>0?1:c<0?-1:0));
+                case '+' -> {
+                    Value b = popValue();
+                    Value a = popValue();
+                    pushValue(add(a, b));
+                }
+                case '-' -> {
+                    Value b = popValue();
+                    Value a = popValue();
+                    pushValue(binaryNumberOp(a, b, ItrLang::subtractNumbers));
+                }
+                case '·' -> {//point-wise multiplication
+                    Value b = popValue();
+                    Value a = popValue();
+                    pushValue(binaryNumberOp(a, b, ItrLang::multiplyNumbers));
+                }
+                case '÷' -> {// point-wise (fractional) division
+                    Value b = popValue();
+                    Value a = popValue();
+                    pushValue(binaryNumberOp(a, b, ItrLang::realDivide));
+                }
+                case ':' -> {//integer division
+                    Value b = popValue();
+                    Value a = popValue();
+                    pushValue(binaryNumberOp(a, b, ItrLang::intDivide));
+                }
+                case '%' -> {// remainder
+                    Value b = popValue();
+                    Value a = popValue();
+                    pushValue(binaryNumberOp(a, b, ItrLang::remainder));
+                }
+                case 'd' -> {//division and remainder
+                    Value b = popValue();
+                    Value a = popValue();
+                    pushValue(binaryNumberOp(a, b, ItrLang::remainder));
+                    pushValue(binaryNumberOp(a, b, ItrLang::intDivide));
+                }
+                case '&' -> {// bit-wise and
+                    Value b = popValue();
+                    Value a = popValue();
+                    pushValue(binaryNumberOp(a, b, ItrLang::andNumbers));
+                }
+                case '|' -> {//  bit-wise or
+                    Value b = popValue();
+                    Value a = popValue();
+                    pushValue(binaryNumberOp(a, b, ItrLang::orNumbers));
+                }
+                case 'x' -> {//  bit-wise xor
+                    Value b = popValue();
+                    Value a = popValue();
+                    pushValue(binaryNumberOp(a, b, ItrLang::xorNumbers));
+                }
+                case '>' -> {
+                    Value b = popValue();
+                    Value a = popValue();
+                    pushValue(binaryNumberOp(a, b, (x, y) -> new Int(BigInteger.valueOf(compareNumbers(x, y) > 0 ? 1 : 0))));
+                }
+                case '=' -> {
+                    Value b = popValue();
+                    Value a = popValue();
+                    pushValue(binaryNumberOp(a, b, (x, y) -> new Int(BigInteger.valueOf(compareNumbers(x, y) == 0 ? 1 : 0))));
+                }
+                case '<' -> {
+                    Value b = popValue();
+                    Value a = popValue();
+                    pushValue(binaryNumberOp(a, b, (x, y) -> new Int(BigInteger.valueOf(compareNumbers(x, y) < 0 ? 1 : 0))));
+                }
+                case '¬' -> {
+                    Value a = popValue();
+                    pushValue(unaryNumberOp(a, x -> compareNumbers(x, Int.ZERO) == 0 ? Int.ONE : Int.ZERO));
+                }
+                case '¿' -> {
+                    Value a = popValue();
+                    pushValue(unaryNumberOp(a, x -> compareNumbers(x, Int.ZERO) == 0 ? Int.ZERO : Int.ONE));
+                }
+                case 's' -> {//sign
+                    Value a = popValue();
+                    pushValue(unaryNumberOp(a, x -> {
+                        int c = compareNumbers(x, Int.ZERO);
+                        return new Int(BigInteger.valueOf(c > 0 ? 1 : c < 0 ? -1 : 0));
                     }));
-                }break;
-                case 'a':{//absolute value/determinant
-                    Value a=popValue();
+                }
+                case 'a' -> {//absolute value/determinant
+                    Value a = popValue();
                     @SuppressWarnings("unchecked")
-                    Function<Value,Value>[] f=new Function[1];
-                    f[0]=(x)->{
-                        if(x instanceof Tuple)
+                    Function<Value, Value>[] f = new Function[1];
+                    f[0] = (x) -> {
+                        if (x instanceof Tuple)
                             return new Tuple(((Tuple) x).stream().map(f[0]).toArray(Value[]::new));
-                        if(x.isNumber())
-                            return compareNumbers((NumberValue)x,Int.ZERO)<0?negate(x):x;
-                        if(x instanceof Matrix)
-                            return ((Matrix)x).determinant();
-                        throw new Error("unsupported operand for 'a': "+x.getClass().getName());
+                        if (x.isNumber())
+                            return compareNumbers((NumberValue) x, Int.ZERO) < 0 ? negate(x) : x;
+                        if (x instanceof Matrix)
+                            return ((Matrix) x).determinant();
+                        throw new Error("unsupported operand for 'a': " + x.getClass().getName());
                     };
                     pushValue(f[0].apply(a));
-                }break;
-                case '~':{
-                    Value a=popValue();
+                }
+                case '~' -> {
+                    Value a = popValue();
                     pushValue(negate(a));
-                }break;
-                case '¯':{
-                    Value a=popValue();
+                }
+                case '¯' -> {
+                    Value a = popValue();
                     pushValue(invert(a));
-                }break;
-                case 'º':{
-                    Value a=popValue();
-                    if(a.isNumber()){//XXX? 2D range for complex numbers
-                        Tuple r=new Tuple();
-                        for(BigInteger i=BigInteger.ZERO;compareNumbers(new Int(i),(NumberValue)a)<0;i=i.add(BigInteger.ONE))
+                }
+                case 'º' -> {
+                    Value a = popValue();
+                    if (a.isNumber()) {//XXX? 2D range for complex numbers
+                        Tuple r = new Tuple();
+                        for (BigInteger i = BigInteger.ZERO; compareNumbers(new Int(i), (NumberValue) a) < 0; i = i.add(BigInteger.ONE))
                             r.push(new Int(i));
                         pushValue(r);
                         break;
                     }
-                    if(a instanceof Tuple){
-                        Tuple r=new Tuple();
-                        for(int i=0;i<=((Tuple) a).size();i++)
+                    if (a instanceof Tuple) {
+                        Tuple r = new Tuple();
+                        for (int i = 0; i <= ((Tuple) a).size(); i++)
                             r.push(((Tuple) a).head(i));
                         pushValue(r);
                         break;
                     }
                     //XXX? what is the range of a matrix
-                    throw new Error("unsupported operand for "+command+": "+a.getClass().getName());
+                    throw new Error("unsupported operand for " + command + ": " + a.getClass().getName());
                 }//break;
-                case '¹':{
-                    Value a=popValue();
-                    if(a.isNumber()){//XXX? 2D range for complex numbers
-                        Tuple r=new Tuple();
-                        for(BigInteger i=BigInteger.ONE;compareNumbers(new Int(i),(NumberValue)a)<=0;i=i.add(BigInteger.ONE))
+                case '¹' -> {
+                    Value a = popValue();
+                    if (a.isNumber()) {//XXX? 2D range for complex numbers
+                        Tuple r = new Tuple();
+                        for (BigInteger i = BigInteger.ONE; compareNumbers(new Int(i), (NumberValue) a) <= 0; i = i.add(BigInteger.ONE))
                             r.push(new Int(i));
                         pushValue(r);
                         break;
                     }
-                    if(a instanceof Tuple){
-                        Tuple r=new Tuple();
-                        for(int i=1;i<=((Tuple) a).size();i++)
+                    if (a instanceof Tuple) {
+                        Tuple r = new Tuple();
+                        for (int i = 1; i <= ((Tuple) a).size(); i++)
                             r.push(((Tuple) a).head(i));
                         pushValue(r);
                         break;
                     }
                     //XXX? what is the range of a matrix
-                    throw new Error("unsupported operand for "+command+": "+a.getClass().getName());
+                    throw new Error("unsupported operand for " + command + ": " + a.getClass().getName());
                 }//break;
-                case 'L':{//length
-                    Value a=peekValue();
-                    if(a instanceof Tuple)
+                case 'L' -> {//length
+                    Value a = peekValue();
+                    if (a instanceof Tuple)
                         pushValue(new Int(BigInteger.valueOf(((Tuple) a).size())));
-                     else if(a instanceof Matrix)
-                        pushValue(new Int(BigInteger.valueOf(((Matrix)a).nrows())));
+                    else if (a instanceof Matrix)
+                        pushValue(new Int(BigInteger.valueOf(((Matrix) a).nrows())));
                     else
                         pushValue(Int.ONE);
-                }break;
-                case 'e':{//exponential
-                    Value a=popValue();
-                    pushValue(applyFunction(a,"exp"));
-                }break;
-                case '½':{
-                    Value a=popValue();
-                    pushValue(binaryNumberOp(a,new Int(BigInteger.valueOf(2)),ItrLang::realDivide));
-                }break;
-                case '²':{
-                    Value a=popValue();
-                    pushValue(multiply(a,a));
-                }break;
-                case '³':{
-                    Value a=popValue();
-                    pushValue(multiply(a,multiply(a,a)));
-                }break;
+                }
+                case 'e' -> {//exponential
+                    Value a = popValue();
+                    pushValue(applyFunction(a, "exp"));
+                }
+                case '½' -> {
+                    Value a = popValue();
+                    pushValue(binaryNumberOp(a, new Int(BigInteger.valueOf(2)), ItrLang::realDivide));
+                }
+                case '²' -> {
+                    Value a = popValue();
+                    pushValue(multiply(a, a));
+                }
+                case '³' -> {
+                    Value a = popValue();
+                    pushValue(multiply(a, multiply(a, a)));
+                }
+
                 // matrix operations
-                case '*':{
-                    Value b=popValue();
-                    Value a=popValue();
-                    pushValue(multiply(a,b));
-                }break;
-                case '/':{// right division A/B -> AB⁻¹
-                    Value b=popValue();
-                    Value a=popValue();
-                    pushValue(divide_right(a,b));
-                }break;
-                case '\\':{// left division A\B -> A⁻¹B
-                    Value b=popValue();
-                    Value a=popValue();
-                    pushValue(divide_left(a,b));
-                }break;
-                case '^':{
-                    Value b=popValue();
-                    Value a=popValue();
-                    pushValue(pow(a,b));
-                }break;
+                case '*' -> {
+                    Value b = popValue();
+                    Value a = popValue();
+                    pushValue(multiply(a, b));
+                }
+                case '/' -> {// right division A/B -> AB⁻¹
+                    Value b = popValue();
+                    Value a = popValue();
+                    pushValue(divide_right(a, b));
+                }
+                case '\\' -> {// left division A\B -> A⁻¹B
+                    Value b = popValue();
+                    Value a = popValue();
+                    pushValue(divide_left(a, b));
+                }
+                case '^' -> {
+                    Value b = popValue();
+                    Value a = popValue();
+                    pushValue(pow(a, b));
+                }
+
                 // vector operations
-                case '¡':{
-                    Tuple a=popValue().asTuple();
-                    pushValue(repeat(a,-1));
-                }break;
-                case '°':{
-                    Tuple b=popValue().asTuple();
-                    Tuple a=popValue().asTuple();
-                    pushValue(concatenate(a,b));
-                }break;
-                case 'µ':{//map
-                    ArrayList<Integer> l=new ArrayList<>();
-                    ip=readItrArgs(sourceCode,ip,l);
-                    Tuple v=popValue().toTuple();// TODO convert numbers to generator
-                    openStack();
-                    iteratorOpMap(v,l);
-                    closeStack();
-                    continue;//unfinished operation
+                case '¡' -> {
+                    Tuple a = popValue().asTuple();
+                    pushValue(repeat(a, -1));
                 }
-                case 'R':{//reduce
-                    ArrayList<Integer> l=new ArrayList<>();
-                    ip=readItrArgs(sourceCode,ip,l);
-                    Tuple v=popValue().toTuple();
-                    openStack();
-                    iteratorOpReduce(v,l);
-                    closeStack();
-                    continue;//unfinished operation
+                case '°' -> {
+                    Tuple b = popValue().asTuple();
+                    Tuple a = popValue().asTuple();
+                    pushValue(concatenate(a, b));
                 }
-                case 'M':{//flat-map
-                    ArrayList<Integer> l=new ArrayList<>();
-                    ip=readItrArgs(sourceCode,ip,l);
-                    Tuple v=popValue().toTuple();
-                    iteratorOpMap(v,l);
-                    continue;//unfinished operation
-                }
-                case '×':{//Cartesian product
-                    ArrayList<Integer> c=new ArrayList<>();
-                    ip=readItrArgs(sourceCode,ip,c);
-                    Tuple r=popValue().toTuple();
-                    Tuple l=popValue().toTuple();
+                case 'µ' -> {//map
+                    ArrayList<Integer> l = new ArrayList<>();
+                    ip = readItrArgs(sourceCode, ip, l);
+                    Tuple v = popValue().toTuple();// TODO convert numbers to generator
                     openStack();
-                    iteratorOpTimes(l,r,c);
+                    iteratorOpMap(v, l);
                     closeStack();
-                    continue;//unfinished operation
+                    // continue;
                 }
-                case 'Y':{//zip
-                    ArrayList<Integer> c=new ArrayList<>();
-                    ip=readItrArgs(sourceCode,ip,c);
-                    Tuple r=popValue().toTuple();
-                    Tuple l=popValue().toTuple();
+                case 'R' -> {//reduce
+                    ArrayList<Integer> l = new ArrayList<>();
+                    ip = readItrArgs(sourceCode, ip, l);
+                    Tuple v = popValue().toTuple();
                     openStack();
-                    iteratorOpZip(l,r,c);
+                    iteratorOpReduce(v, l);
                     closeStack();
-                    continue;//unfinished operation
+                    // continue;
                 }
-                case 'C':{//cauchy-product
-                    ArrayList<Integer> c=new ArrayList<>();
-                    ip=readItrArgs(sourceCode,ip,c);
-                    Tuple r=popValue().toTuple();
-                    Tuple l=popValue().toTuple();
-                    openStack();
-                    iteratorOpCauchy(l,r,c);
-                    closeStack();
-                    continue;//unfinished operation
+                case 'M' -> {//flat-map
+                    ArrayList<Integer> l = new ArrayList<>();
+                    ip = readItrArgs(sourceCode, ip, l);
+                    Tuple v = popValue().toTuple();
+                    iteratorOpMap(v, l);
+                    // continue;
                 }
-                case '¶':{// power set
-                    ArrayList<Integer> l=new ArrayList<>();
-                    ip=readItrArgs(sourceCode,ip,l);
-                    Tuple v=popValue().toTuple();
+                case '×' -> {//Cartesian product
+                    ArrayList<Integer> c = new ArrayList<>();
+                    ip = readItrArgs(sourceCode, ip, c);
+                    Tuple r = popValue().toTuple();
+                    Tuple l = popValue().toTuple();
                     openStack();
-                    iteratorOpSubsets(v,l);
+                    iteratorOpTimes(l, r, c);
                     closeStack();
-                    continue;//unfinished operation
+                    // continue;
+                }
+                case 'Y' -> {//zip
+                    ArrayList<Integer> c = new ArrayList<>();
+                    ip = readItrArgs(sourceCode, ip, c);
+                    Tuple r = popValue().toTuple();
+                    Tuple l = popValue().toTuple();
+                    openStack();
+                    iteratorOpZip(l, r, c);
+                    closeStack();
+                    // continue;
+                }
+                case 'C' -> {//cauchy-product
+                    ArrayList<Integer> c = new ArrayList<>();
+                    ip = readItrArgs(sourceCode, ip, c);
+                    Tuple r = popValue().toTuple();
+                    Tuple l = popValue().toTuple();
+                    openStack();
+                    iteratorOpCauchy(l, r, c);
+                    closeStack();
+                    // continue;
+                }
+                case '¶' -> {// power set
+                    ArrayList<Integer> l = new ArrayList<>();
+                    ip = readItrArgs(sourceCode, ip, l);
+                    Tuple v = popValue().toTuple();
+                    openStack();
+                    iteratorOpSubsets(v, l);
+                    closeStack();
+                    // continue;
                 }//break;
-                case 'S':{// sum
-                    Value v=popValue();
-                    if(v.isNumber()){//skip conversion of number to array and calculate result directly
+                case 'S' -> {// sum
+                    Value v = popValue();
+                    if (v.isNumber()) {//skip conversion of number to array and calculate result directly
                         //number is treated as if it were the 1-based range starting at that number
                         //XXX? handle complex numbers
-                        NumberValue x=(NumberValue) v;
-                        if(compareNumbers(x,Int.ZERO)<=0){
+                        NumberValue x = (NumberValue) v;
+                        if (compareNumbers(x, Int.ZERO) <= 0) {
                             pushValue(Int.ZERO);
                             continue;
                         }
-                        BigInteger i=x.asInt();
+                        BigInteger i = x.asInt();
                         pushValue(new Int(i.multiply(i.add(BigInteger.ONE)).divide(BigInteger.TWO)));
                         continue;
                     }
-                    v=v.toTuple();
+                    v = v.toTuple();
                     @SuppressWarnings("unchecked")
-                    Function<Tuple,Value>[] f=(Function<Tuple,Value>[])new Function[1];
-                    f[0]=(t)->{
-                        final Value[] res=new Value[]{Int.ZERO};
-                        t.forEach(e->res[0]=binaryNumberOp(res[0],e instanceof Tuple?f[0].apply((Tuple)e):e,ItrLang::addNumbers));
-                        return res[0];
-                    };
-                    pushValue(f[0].apply((Tuple)v));
-                }break;
-                case 'P':{// product
-                    Value v=popValue();
-                    if(v.isNumber()){//skip conversion of number to array and calculate result directly
-                        //number is treated as if it were the 1-based range starting at that number
-                        //XXX? handle complex numbers
-                        NumberValue x=(NumberValue) v;
-                        NumberValue P=Int.ONE;
-                        for(BigInteger i=BigInteger.ONE;compareNumbers(new Int(i),x)<=0;i=i.add(BigInteger.ONE))
-                            P=multiplyNumbers(P,new Int(i));
-                        pushValue(P);
-                        continue;
-                    }
-                    v=v.toTuple();
-                    @SuppressWarnings("unchecked")
-                    Function<Tuple,Value>[] f=(Function<Tuple,Value>[])new Function[1];
-                    f[0]=(t)->{
-                        final Value[] res=new Value[]{Int.ONE};
-                        t.forEach(e-> res[0]=multiply(res[0],e instanceof Tuple?f[0].apply((Tuple)e):e));
+                    Function<Tuple, Value>[] f = (Function<Tuple, Value>[]) new Function[1];
+                    f[0] = (t) -> {
+                        final Value[] res = new Value[]{Int.ZERO};
+                        t.forEach(e -> res[0] = binaryNumberOp(res[0], e instanceof Tuple ? f[0].apply((Tuple) e) : e, ItrLang::addNumbers));
                         return res[0];
                     };
                     pushValue(f[0].apply((Tuple) v));
-                }break;
-                case 'Ì':{//indices of nonzero elements
-                    Tuple v=popValue().asTuple();
-                    Tuple res=new Tuple();
-                    for(int i=0;i<v.size();i++)if(v.get(i).asBool())res.push(new Int(BigInteger.valueOf(i)));
+                }
+                case 'P' -> {// product
+                    Value v = popValue();
+                    if (v.isNumber()) {//skip conversion of number to array and calculate result directly
+                        //number is treated as if it were the 1-based range starting at that number
+                        //XXX? handle complex numbers
+                        NumberValue x = (NumberValue) v;
+                        NumberValue P = Int.ONE;
+                        for (BigInteger i = BigInteger.ONE; compareNumbers(new Int(i), x) <= 0; i = i.add(BigInteger.ONE))
+                            P = multiplyNumbers(P, new Int(i));
+                        pushValue(P);
+                        continue;
+                    }
+                    v = v.toTuple();
+                    @SuppressWarnings("unchecked")
+                    Function<Tuple, Value>[] f = (Function<Tuple, Value>[]) new Function[1];
+                    f[0] = (t) -> {
+                        final Value[] res = new Value[]{Int.ONE};
+                        t.forEach(e -> res[0] = multiply(res[0], e instanceof Tuple ? f[0].apply((Tuple) e) : e));
+                        return res[0];
+                    };
+                    pushValue(f[0].apply((Tuple) v));
+                }
+                case 'Ì' -> {//indices of nonzero elements
+                    Tuple v = popValue().asTuple();
+                    Tuple res = new Tuple();
+                    for (int i = 0; i < v.size(); i++) if (v.get(i).asBool()) res.push(new Int(BigInteger.valueOf(i)));
                     pushValue(res);
-                }break;
-                case 'Í':{//put nonzero element at indices given by vector
-                    Tuple v=popValue().asTuple();
-                    List<BigInteger> ints=v.stream().flatMap(ItrLang::flatten).map(NumberValue::asInt).toList();
-                    BigInteger M=ints.stream().reduce(BigInteger.ZERO,(m, e) -> e.compareTo(m) > 0 ? e : m);
-                    Tuple res=new Tuple();
-                    res.addAll(Collections.nCopies(M.intValueExact()+1,Int.ZERO));
-                    ints.forEach(e->{if(e.signum()>=0)res.set(e.intValueExact(),Int.ONE);});
+                }
+                case 'Í' -> {//put nonzero element at indices given by vector
+                    Tuple v = popValue().asTuple();
+                    List<BigInteger> ints = v.stream().flatMap(ItrLang::flatten).map(NumberValue::asInt).toList();
+                    BigInteger M = ints.stream().reduce(BigInteger.ZERO, (m, e) -> e.compareTo(m) > 0 ? e : m);
+                    Tuple res = new Tuple();
+                    res.addAll(Collections.nCopies(M.intValueExact() + 1, Int.ZERO));
+                    ints.forEach(e -> {
+                        if (e.signum() >= 0) res.set(e.intValueExact(), Int.ONE);
+                    });
                     pushValue(res);
-                }break;
-                case '@':{//replace number with corresponding element of vector
-                    Value I=popValue();
-                    final Value v=popValue();
-                    if(v.isNumber()){//calculate result directly if v already is a number
-                        NumberValue x=(NumberValue) v;
-                        pushValue(unaryNumberOp(I,(e)->{//number is treated as if it were the 1-based range starting at that number
-                            BigInteger i=e.asInt();
-                            return i.signum()>=0&&compareNumbers(new Int(i),x)<0?new Int(i.add(BigInteger.ONE)):Int.ZERO;
+                }
+                case '@' -> {//replace number with corresponding element of vector
+                    Value I = popValue();
+                    final Value v = popValue();
+                    if (v.isNumber()) {//calculate result directly if v already is a number
+                        NumberValue x = (NumberValue) v;
+                        pushValue(unaryNumberOp(I, (e) -> {//number is treated as if it were the 1-based range starting at that number
+                            BigInteger i = e.asInt();
+                            return i.signum() >= 0 && compareNumbers(new Int(i), x) < 0 ? new Int(i.add(BigInteger.ONE)) : Int.ZERO;
                         }));
                         continue;
                     }
-                    final Tuple t=v.toTuple();
-                    pushValue(unaryNumberOp(I,(e)->{
-                        int i=e.asInt().intValueExact();
-                        return i>=0&&i<t.size()?t.get(i):Int.ZERO;
+                    final Tuple t = v.toTuple();
+                    pushValue(unaryNumberOp(I, (e) -> {
+                        int i = e.asInt().intValueExact();
+                        return i >= 0 && i < t.size() ? t.get(i) : Int.ZERO;
                     }));
-                }break;
-                case '®':{// vector to matrix
-                    Value v=popValue();
-                    if(v instanceof Tuple){
-                        Tuple elts=new Tuple();
-                        ((Tuple)v).forEach(e->elts.push(e.asTuple()));
+                }
+                case '®' -> {// vector to matrix
+                    Value v = popValue();
+                    if (v instanceof Tuple) {
+                        Tuple elts = new Tuple();
+                        ((Tuple) v).forEach(e -> elts.push(e.asTuple()));
                         pushValue(new Matrix(elts));
                         break;
-                    }if(v instanceof Matrix){
-                        pushValue(((Matrix)v).rows);
+                    }
+                    if (v instanceof Matrix) {
+                        pushValue(((Matrix) v).rows);
                         break;
                     }
                     pushValue(v);
-                }break;
-                default:
-                    break;
+                }
+                default -> {
+                }
             }
+            // if there is ever code after the switch statement make sure to check all branches marked with continue
         }
     }
 
@@ -1396,7 +1598,7 @@ public class ItrLang {
             try(BufferedReader reader=new BufferedReader(new FileReader(src))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    if (code.length() > 0)
+                    if (!code.isEmpty())
                         code.append('\n');
                     code.append(line);
                 }

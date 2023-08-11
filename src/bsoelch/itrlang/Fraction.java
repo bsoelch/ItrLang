@@ -79,7 +79,7 @@ record Fraction(BigInteger numerator, BigInteger denominator) implements NumberV
 
     @Override
     public String toString() {
-        return numerator.toString() + "\\" + denominator.toString();
+        return numerator.toString() + "/" + denominator.toString();
     }
 
     static Fraction negate(Fraction a) {
