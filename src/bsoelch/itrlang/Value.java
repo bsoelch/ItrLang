@@ -1,11 +1,16 @@
 package bsoelch.itrlang;
 
-interface Value {
+import java.util.List;
+
+public interface Value {
     default Tuple asTuple() {
         return new Tuple(this);
     }
     default Tuple toTuple() {
         return asTuple();
+    }
+    default List<Value> toList(){
+        return toTuple();
     }
 
     boolean asBool();

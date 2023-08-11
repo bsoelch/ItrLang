@@ -956,13 +956,13 @@ public class ItrLang {
         return ip-(op==';'?1:0);
     }
 
-    static void iteratorOpMap(Tuple v, ArrayList<Integer> code) throws IOException {
+    static void iteratorOpMap(List<Value> v, ArrayList<Integer> code) throws IOException {
         for(Value e:v){
             pushValue(e);
             interpret(code);
         }
     }
-    static void iteratorOpReduce(Tuple v, ArrayList<Integer> code) throws IOException {
+    static void iteratorOpReduce(List<Value> v, ArrayList<Integer> code) throws IOException {
         if(v.isEmpty())
             return;
         pushValue(v.get(0));
@@ -973,7 +973,7 @@ public class ItrLang {
             interpret(code);
         }
     }
-    static void iteratorOpSubsets(Tuple v, ArrayList<Integer> code) throws IOException {
+    static void iteratorOpSubsets(List<Value> v, ArrayList<Integer> code) throws IOException {
         BigInteger setId=BigInteger.ZERO,mask;
         int i;
         while(setId.bitLength()<=v.size()){
@@ -991,7 +991,7 @@ public class ItrLang {
             setId=setId.add(BigInteger.ONE);
         }
     }
-    static void iteratorOpZip(Tuple l,Tuple r, ArrayList<Integer> code) throws IOException {
+    static void iteratorOpZip(List<Value> l,List<Value> r, ArrayList<Integer> code) throws IOException {
         int i=0;
         for(;i<l.size()&&i<r.size();i++){
             pushValue(l.get(i));
@@ -1009,7 +1009,7 @@ public class ItrLang {
             interpret(code);
         }
     }
-    static void iteratorOpCauchy(Tuple l,Tuple r, ArrayList<Integer> code) throws IOException {
+    static void iteratorOpCauchy(List<Value> l,List<Value> r, ArrayList<Integer> code) throws IOException {
         for(int s=0;s<l.size()+r.size()-1;s++){
             for(int i=Math.max(0,s-r.size()+1);i<l.size();i++){
                 pushValue(l.get(i));
@@ -1018,7 +1018,7 @@ public class ItrLang {
             }
         }
     }
-    static void iteratorOpTimes(Tuple l,Tuple r, ArrayList<Integer> code) throws IOException {
+    static void iteratorOpTimes(List<Value> l,List<Value> r, ArrayList<Integer> code) throws IOException {
         for (Value value : l) {
             for (Value item : r) {
                 pushValue(value);
@@ -1428,7 +1428,7 @@ public class ItrLang {
                 case 'µ' -> {//map
                     ArrayList<Integer> l = new ArrayList<>();
                     ip = readItrArgs(sourceCode, ip, l);
-                    Tuple v = popValue().toTuple();// TODO convert numbers to generator
+                    List<Value> v = popValue().toList();
                     openStack();
                     iteratorOpMap(v, l);
                     closeStack();
@@ -1437,7 +1437,7 @@ public class ItrLang {
                 case 'R' -> {//reduce
                     ArrayList<Integer> l = new ArrayList<>();
                     ip = readItrArgs(sourceCode, ip, l);
-                    Tuple v = popValue().toTuple();
+                    List<Value> v = popValue().toList();
                     openStack();
                     iteratorOpReduce(v, l);
                     closeStack();
@@ -1446,15 +1446,15 @@ public class ItrLang {
                 case 'M' -> {//flat-map
                     ArrayList<Integer> l = new ArrayList<>();
                     ip = readItrArgs(sourceCode, ip, l);
-                    Tuple v = popValue().toTuple();
+                    List<Value> v = popValue().toList();
                     iteratorOpMap(v, l);
                     // continue;
                 }
                 case '×' -> {//Cartesian product
                     ArrayList<Integer> c = new ArrayList<>();
                     ip = readItrArgs(sourceCode, ip, c);
-                    Tuple r = popValue().toTuple();
-                    Tuple l = popValue().toTuple();
+                    List<Value> r = popValue().toList();
+                    List<Value> l = popValue().toList();
                     openStack();
                     iteratorOpTimes(l, r, c);
                     closeStack();
@@ -1463,8 +1463,8 @@ public class ItrLang {
                 case 'Y' -> {//zip
                     ArrayList<Integer> c = new ArrayList<>();
                     ip = readItrArgs(sourceCode, ip, c);
-                    Tuple r = popValue().toTuple();
-                    Tuple l = popValue().toTuple();
+                    List<Value> r = popValue().toList();
+                    List<Value> l = popValue().toList();
                     openStack();
                     iteratorOpZip(l, r, c);
                     closeStack();
@@ -1473,8 +1473,8 @@ public class ItrLang {
                 case 'C' -> {//cauchy-product
                     ArrayList<Integer> c = new ArrayList<>();
                     ip = readItrArgs(sourceCode, ip, c);
-                    Tuple r = popValue().toTuple();
-                    Tuple l = popValue().toTuple();
+                    List<Value> r = popValue().toList();
+                    List<Value> l = popValue().toList();
                     openStack();
                     iteratorOpCauchy(l, r, c);
                     closeStack();
@@ -1483,7 +1483,7 @@ public class ItrLang {
                 case '¶' -> {// power set
                     ArrayList<Integer> l = new ArrayList<>();
                     ip = readItrArgs(sourceCode, ip, l);
-                    Tuple v = popValue().toTuple();
+                    List<Value> v = popValue().toList();
                     openStack();
                     iteratorOpSubsets(v, l);
                     closeStack();
@@ -1653,7 +1653,7 @@ public class ItrLang {
     }
 
     public static void main(String[] args) throws IOException {
-        String code="#";
+        String code="5µ²";
         if(args.length>0){//TODO flags -u -> unicode source -f binary source
             code=ItrLang.loadCode(new File(args[0]),true);
         }
