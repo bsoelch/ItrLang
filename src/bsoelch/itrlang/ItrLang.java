@@ -578,7 +578,7 @@ public class ItrLang {
         ArrayList<ParserToken> expr=new ArrayList<>();
         StringBuilder current=new StringBuilder();
         int base=10;//supported bases: 2-10 or 16
-        for(int c:str){
+        for(int c:str){// TODO support floats
             if(c>='0'&&(c<=Math.min('0'+(base-1),'9'))){
                 current.append((char)c);
                 continue;
