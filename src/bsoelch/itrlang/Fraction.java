@@ -47,7 +47,15 @@ public record Fraction(BigInteger numerator, BigInteger denominator) implements 
 
     @Override
     public BigInteger asInt() {
-        return numerator.divide(denominator);
+        BigInteger[] divMod=numerator.divideAndRemainder(denominator);
+        if(divMod[1].signum()==0)
+            return divMod[0];
+        divMod[1]=divMod[1].shiftLeft(1);
+        if(divMod[1].compareTo(denominator)>=0)
+            return divMod[0].add(BigInteger.ONE);
+        if(divMod[1].negate().compareTo(denominator)>0)
+            return divMod[0].subtract(BigInteger.ONE);
+        return divMod[0];
     }
 
     @Override
@@ -103,9 +111,18 @@ public record Fraction(BigInteger numerator, BigInteger denominator) implements 
     static Fraction divide(Fraction a, Fraction b) {
         return new Fraction(a.numerator.multiply(b.denominator), a.denominator.multiply(b.numerator));
     }
-
-    static Fraction remainder(Fraction a, Fraction b) {
-        return subtract(a, multiply(b, new Fraction(divide(a, b).asInt(), BigInteger.ONE)));
+    // floor(a/b)
+    static BigInteger floorDivide(BigInteger a, BigInteger b) {
+        if(a.signum()>0)
+            return a.divide(b);
+        BigInteger[] divMod=a.divideAndRemainder(b);
+        if(divMod[1].signum()<0)
+            divMod[0]=divMod[0].subtract(BigInteger.ONE);
+        return divMod[0];
+    }
+    static BigInteger floorDivide(Fraction a, Fraction b) {
+        Fraction d=divide(a,b);
+        return floorDivide(d.numerator, d.denominator);
     }
 
     static int compare(Fraction a, Fraction b) {

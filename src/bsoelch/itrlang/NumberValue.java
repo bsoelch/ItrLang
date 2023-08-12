@@ -8,6 +8,7 @@ import java.util.List;
 public interface NumberValue extends Value {
     BigDecimal asReal();
 
+    /**round to nearest integer*/
     BigInteger asInt();
 
     Fraction asFraction();

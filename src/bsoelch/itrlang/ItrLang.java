@@ -218,30 +218,26 @@ public class ItrLang {
             return Complex.divide(a.asComplex(),b.asComplex(),mathContext);
         throw new IllegalArgumentException("unsupported operands of division: "+a.getClass().getName()+"   "+a.getClass().getName());
     }
-    static NumberValue intDivide(NumberValue a,NumberValue b){//TODO ensure result of integer division and remainder are compatible
+    static NumberValue intDivide(NumberValue a,NumberValue b){
         if(!b.asBool())
             return Int.ZERO;
         if(a instanceof Int&&b instanceof Int)
-            return new Int(a.asInt().divide(b.asInt()));
+            return new Int(Fraction.floorDivide(a.asInt(),b.asInt()));
         if(a.isRational()&&b.isRational())
-            return new Int(Fraction.divide(a.asFraction(),b.asFraction()).asInt());
+            return new Int(Fraction.floorDivide(a.asFraction(),b.asFraction()));
         if(a.isReal()&&b.isReal())
-            return new Int(new Real(a.asReal().divide(b.asReal(),mathContext)).asInt());
+            return new Int(BigMath.floor(a.asReal().divide(b.asReal(),mathContext),mathContext).toBigInteger());
         if(a.isNumber()&&b.isNumber())
             return CMath.round(Complex.divide(a.asComplex(),b.asComplex(),mathContext),mathContext);
         throw new IllegalArgumentException("unsupported operands of division: "+a.getClass().getName()+"   "+a.getClass().getName());
     }
-    static NumberValue remainder(NumberValue a,NumberValue b){//TODO? replace remainder with mod
+    static NumberValue remainder(NumberValue a,NumberValue b){
         if(!b.asBool())
             return a;
-        if(a instanceof Int&&b instanceof Int)
-            return new Int(a.asInt().remainder(b.asInt()));
-        if(a.isRational()&&b.isRational())
-            return Fraction.remainder(a.asFraction(),b.asFraction());
-        if(a.isReal()&&b.isReal())
-            return new Real(a.asReal().remainder(b.asReal(),mathContext));
-        if(a.isNumber()&&b.isNumber())
-            return Complex.remainder(a.asComplex(),b.asComplex(),mathContext);
+        if(a.isNumber()&&b.isNumber()){
+            NumberValue d=intDivide(a,b);
+            return subtractNumbers(a,multiplyNumbers(b,d));
+        }
         throw new IllegalArgumentException("unsupported operands of remainder: "+a.getClass().getName()+"   "+a.getClass().getName());
     }
     static Value pow(Value a,Value b){
@@ -1302,8 +1298,13 @@ public class ItrLang {
                 case 's' -> {//sign
                     Value a = popValue();
                     pushValue(unaryNumberOp(a, x -> {
-                        int c = compareNumbers(x, Int.ZERO);
-                        return new Int(BigInteger.valueOf(c > 0 ? 1 : c < 0 ? -1 : 0));
+                        if(x.isReal()){
+                            int c = compareNumbers(x, Int.ZERO);
+                            return new Int(BigInteger.valueOf(c > 0 ? 1 : c < 0 ? -1 : 0));
+                        }
+                        if(x instanceof Complex)
+                            return realDivide(x,new Real(Complex.abs((Complex) x,mathContext)));
+                        throw new Error("unsupported operand for 's': " + x.getClass().getName());
                     }));
                 }
                 case 'a' -> {//absolute value/determinant
@@ -1313,8 +1314,10 @@ public class ItrLang {
                     f[0] = (x) -> {
                         if (x instanceof Tuple)
                             return new Tuple(((Tuple) x).stream().map(f[0]).toArray(Value[]::new));
-                        if (x.isNumber())
+                        if (x.isReal())
                             return compareNumbers((NumberValue) x, Int.ZERO) < 0 ? negate(x) : x;
+                        if(x instanceof Complex)
+                            return new Real(Complex.abs((Complex) x,mathContext));
                         if (x instanceof Matrix)
                             return ((Matrix) x).determinant();
                         throw new Error("unsupported operand for 'a': " + x.getClass().getName());
@@ -1383,6 +1386,10 @@ public class ItrLang {
                 case '½' -> {
                     Value a = popValue();
                     pushValue(binaryNumberOp(a, new Int(BigInteger.valueOf(2)), ItrLang::realDivide));
+                }
+                case 'i','j','k' -> {
+                    Value a = popValue();
+                    pushValue(binaryNumberOp(a, Complex.I, ItrLang::multiply));
                 }
                 case '²' -> {
                     Value a = popValue();
@@ -1653,7 +1660,7 @@ public class ItrLang {
     }
 
     public static void main(String[] args) throws IOException {
-        String code="5µ²";
+        String code="1~ 3%";
         if(args.length>0){//TODO flags -u -> unicode source -f binary source
             code=ItrLang.loadCode(new File(args[0]),true);
         }

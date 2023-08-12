@@ -6,7 +6,7 @@ import java.math.BigInteger;
 public record Real(BigDecimal value) implements NumberValue {
     @Override
     public BigInteger asInt() {
-        return value.toBigInteger();
+        return BigMath.round(value,ItrLang.mathContext).toBigInteger();
     }
 
     @Override

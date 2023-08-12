@@ -2,7 +2,7 @@
 
 _Itr_ is an Array-based programming Language designed for code golfing.
 
-_Itr_ has built-in support for unbounded Integers, Matrix operations as well as Rational and Complex number</i> (currently only in the java version).
+_Itr_ has built-in support for unbounded Integers, Matrix operations as well as Rational and Complex number</i>.
 
 [online interpreter](https://bsoelch.github.io/OneChar.js/?lang=Itr)
 
@@ -100,9 +100,9 @@ binary:
 * `-` subtraction
 * `·` multiplication
 * `÷` fractional division
-* `:` integer-division
-* `%` remainder
-* `&`/`|`/`^` bit-wise and/or/xor
+* `:` integer-division (real numbers are rounded down, complex numbers are rounded to nearest gaussian integer)
+* `%` mod (`a%b = a-b*(a:b)`)
+* `&`/`|`/`^` bit-wise and/or/xor (argument is rounded to nearest integer)
 * `<`/`=`/`>` compare all elements returns `1` if condition satisfied and `0` otherwise
 
 ### Matrix operations
