@@ -75,18 +75,49 @@ public class ItrLang {
         if(a.isNumber()&&b.isNumber()){
             return f.apply((NumberValue)a,(NumberValue)b);
         }
-        // unwrap matrices
-        if(a instanceof Matrix)
-            a=((Matrix) a).rows;
-        if(b instanceof Matrix)
-            b=((Matrix) b).rows;
+        if(a instanceof Matrix&&b.isNumber()){
+            Tuple res=new Tuple();
+            res.ensureCapacity(((Matrix) a).nrows());
+            for(int i=0;i<((Matrix) a).nrows();i++){
+                Tuple row=new Tuple();
+                row.ensureCapacity(((Matrix) a).ncolumns());
+                for(int j=0;j<((Matrix) a).ncolumns();j++)
+                    row.push(binaryNumberOp(((Matrix) a).at(i,j),b,f));
+                res.push(row);
+            }
+            return new Matrix(res);
+        }
+        if(a.isNumber()&&b instanceof Matrix){
+            Tuple res=new Tuple();
+            res.ensureCapacity(((Matrix)b).nrows());
+            for(int i=0;i<((Matrix) b).nrows();i++){
+                Tuple row=new Tuple();
+                row.ensureCapacity(((Matrix) b).ncolumns());
+                for(int j=0;j<((Matrix) b).ncolumns();j++)
+                    row.push(binaryNumberOp(a,((Matrix)b).at(i,j),f));
+                res.push(row);
+            }
+            return new Matrix(res);
+        }
+        if(a instanceof Matrix&&b instanceof Matrix){
+            int rows=Math.max(((Matrix) a).nrows(),((Matrix) b).nrows());
+            int columns=Math.max(((Matrix) a).ncolumns(),((Matrix) b).ncolumns());
+            Tuple res=new Tuple();
+            res.ensureCapacity(rows);
+            for(int i=0;i<rows;i++){
+                Tuple row=new Tuple();
+                row.ensureCapacity(columns);
+                for(int j=0;j<columns;j++)
+                   row.push(binaryNumberOp(((Matrix) a).at(i,j),((Matrix) b).at(i,j),f));
+                res.push(row);
+            }
+            return new Matrix(res);
+        }
         if(a.isNumber()&&b instanceof Tuple){
-            Value finalA = a;
-            return new Tuple(((Tuple) b).stream().map(x->binaryNumberOp(finalA,x,f)).toArray(Value[]::new));
+            return new Tuple(((Tuple) b).stream().map(x->binaryNumberOp(a,x,f)).toArray(Value[]::new));
         }
         if(a instanceof Tuple&&b.isNumber()){
-            Value finalB = b;
-            return new Tuple(((Tuple) a).stream().map(x->binaryNumberOp(x, finalB,f)).toArray(Value[]::new));
+            return new Tuple(((Tuple) a).stream().map(x->binaryNumberOp(x, b,f)).toArray(Value[]::new));
         }
         if(a instanceof Tuple&&b instanceof Tuple){
             Tuple res=new Tuple();
@@ -421,47 +452,6 @@ public class ItrLang {
         return new Tuple(data);
     }
 
-    static Tuple stack=new Tuple();// addLater? store stack in object
-    static Stack<Tuple> stackStack=new Stack<>();
-    static class StackRow extends Tuple{
-        StackRow(Value ... elts){super(elts);}
-    }
-
-    static int readInstruction(ArrayList<Integer> sourceCode,int ip){
-        return ip>=0&&ip< sourceCode.size()?sourceCode.get(ip):'\0';
-    }
-    static Value popValue(){
-        return stack.popOrDefault(Int.ZERO);
-    }
-    static Value peekValue(){
-        return stack.peekOrDefault(Int.ZERO);
-    }
-    static void pushValue(BigInteger i){
-        stack.push(new Int(i));
-    }
-    static void pushValue(Value v){
-        stack.push(v);
-    }
-
-    static void openStack(){
-        stackStack.push(stack);
-        stack = new Tuple();
-    }
-    static void closeStack(){
-        Tuple prevStack = stackStack.popOrDefault(new Tuple());
-        int i=0;
-        while(i<stack.size()&&stack.get(i) instanceof StackRow)
-            i++;
-        if(i>0){
-            StackRow tail=new StackRow(stack.subList(i,stack.size()).toArray(Value[]::new));
-            stack.truncate(i);
-            pushValue(tail);
-            prevStack.push(new Matrix(stack));
-        }else {
-            prevStack.push(stack);
-        }
-        stack = prevStack;
-    }
 
     /**simulate a UTF8 input stream independent of the system encoding*/
     static abstract class UTF8Input extends InputStream{
@@ -509,14 +499,6 @@ public class ItrLang {
             };
         }
     }
-    static UTF8Input in;
-    static{
-        Console c=System.console();
-        if (c == null||c.charset().equals(StandardCharsets.UTF_8))
-            in=UTF8Input.fromBytes(System.in);
-        else // translate native encoding to UTF8
-            in=UTF8Input.fromChars(new InputStreamReader(System.in,c.charset()));
-    }
 
     static long decodeCompressedUTF8(byte[] bytes, int l){
         if(l<=1)
@@ -554,6 +536,66 @@ public class ItrLang {
     }
     static boolean isItrSpace(int codepoint){
         return contains(new int[]{' ','\n','\t','\r'},codepoint);
+    }
+
+    Tuple stack;
+    Stack<Tuple> stackStack;
+    UTF8Input in;
+    boolean implicitInput=false;
+    private ItrLang(){
+        Console c=System.console();
+        if (c == null||c.charset().equals(StandardCharsets.UTF_8))
+            in=UTF8Input.fromBytes(System.in);
+        else // translate native encoding to UTF8
+            in=UTF8Input.fromChars(new InputStreamReader(System.in,c.charset()));
+        stack=new Tuple();
+        stackStack=new Stack<>();
+    }
+
+    static class StackRow extends Tuple{
+        StackRow(Value ... elts){super(elts);}
+    }
+
+    static int readInstruction(ArrayList<Integer> sourceCode,int ip){
+        return ip>=0&&ip< sourceCode.size()?sourceCode.get(ip):'\0';
+    }
+    Value popValue() throws IOException {
+        if(implicitInput&&stack.isEmpty()){
+            readValue();
+        }
+        return stack.popOrDefault(Int.ZERO);
+    }
+    Value peekValue() throws IOException {
+        if(implicitInput&&stack.isEmpty()){
+            readValue();
+        }
+        return stack.peekOrDefault(Int.ZERO);
+    }
+    void pushValue(BigInteger i){
+        stack.push(new Int(i));
+    }
+    void pushValue(Value v){
+        stack.push(v);
+    }
+
+    void openStack(){
+        stackStack.push(stack);
+        stack = new Tuple();
+    }
+    void closeStack(){
+        Tuple prevStack = stackStack.popOrDefault(new Tuple());
+        int i=0;
+        while(i<stack.size()&&stack.get(i) instanceof StackRow)
+            i++;
+        if(i>0){
+            StackRow tail=new StackRow(stack.subList(i,stack.size()).toArray(Value[]::new));
+            stack.truncate(i);
+            pushValue(tail);
+            prevStack.push(new Matrix(stack));
+        }else {
+            prevStack.push(stack);
+        }
+        stack = prevStack;
     }
 
 
@@ -780,7 +822,7 @@ public class ItrLang {
         return new Tuple(str.stream().map(i->new Int(BigInteger.valueOf(i))).toArray(Value[]::new));
     }
 
-    static void readBracket(int left,int right,ArrayList<Integer> buff) throws IOException {
+    void readBracket(int left,int right,ArrayList<Integer> buff) throws IOException {
         buff.add(left);
         int k=1;
         int cp=in.readCodepoint();
@@ -795,7 +837,7 @@ public class ItrLang {
         }
         pushValue(parseValue(buff));
     }
-    static void readValue() throws IOException {
+    void readValue() throws IOException {
         int cp=in.readCodepoint();
         while(isItrSpace(cp))//skip leading spaces
             cp=in.readCodepoint();
@@ -952,13 +994,13 @@ public class ItrLang {
         return ip-(op==';'?1:0);
     }
 
-    static void iteratorOpMap(List<Value> v, ArrayList<Integer> code) throws IOException {
+    void iteratorOpMap(List<Value> v, ArrayList<Integer> code) throws IOException {
         for(Value e:v){
             pushValue(e);
             interpret(code);
         }
     }
-    static void iteratorOpReduce(List<Value> v, ArrayList<Integer> code) throws IOException {
+    void iteratorOpReduce(List<Value> v, ArrayList<Integer> code) throws IOException {
         if(v.isEmpty())
             return;
         pushValue(v.get(0));
@@ -969,7 +1011,7 @@ public class ItrLang {
             interpret(code);
         }
     }
-    static void iteratorOpSubsets(List<Value> v, ArrayList<Integer> code) throws IOException {
+    void iteratorOpSubsets(List<Value> v, ArrayList<Integer> code) throws IOException {
         BigInteger setId=BigInteger.ZERO,mask;
         int i;
         while(setId.bitLength()<=v.size()){
@@ -987,7 +1029,7 @@ public class ItrLang {
             setId=setId.add(BigInteger.ONE);
         }
     }
-    static void iteratorOpZip(List<Value> l,List<Value> r, ArrayList<Integer> code) throws IOException {
+    void iteratorOpZip(List<Value> l,List<Value> r, ArrayList<Integer> code) throws IOException {
         int i=0;
         for(;i<l.size()&&i<r.size();i++){
             pushValue(l.get(i));
@@ -1005,7 +1047,7 @@ public class ItrLang {
             interpret(code);
         }
     }
-    static void iteratorOpCauchy(List<Value> l,List<Value> r, ArrayList<Integer> code) throws IOException {
+    void iteratorOpCauchy(List<Value> l,List<Value> r, ArrayList<Integer> code) throws IOException {
         for(int s=0;s<l.size()+r.size()-1;s++){
             for(int i=Math.max(0,s-r.size()+1);i<l.size();i++){
                 pushValue(l.get(i));
@@ -1014,7 +1056,7 @@ public class ItrLang {
             }
         }
     }
-    static void iteratorOpTimes(List<Value> l,List<Value> r, ArrayList<Integer> code) throws IOException {
+    void iteratorOpTimes(List<Value> l,List<Value> r, ArrayList<Integer> code) throws IOException {
         for (Value value : l) {
             for (Value item : r) {
                 pushValue(value);
@@ -1024,7 +1066,7 @@ public class ItrLang {
         }
     }
 
-    static void interpret(ArrayList<Integer> sourceCode) throws IOException {
+    void interpret(ArrayList<Integer> sourceCode) throws IOException {
         boolean numberMode=false;
 
         int command;
@@ -1597,7 +1639,6 @@ public class ItrLang {
         }
     }
 
-
     public static String loadCode(File src,boolean utf8Mode) throws IOException {
         // TODO read to list of integers instead of Sting
         StringBuilder code = new StringBuilder();
@@ -1653,18 +1694,56 @@ public class ItrLang {
         }
     }
     // TODO code -> byte conversion
-    public static void run(String code,List<Value> args) throws IOException {
-        // TODO implicit input (if no explicit input)
-        stack.addAll(args);
-        interpret(new ArrayList<>(code.codePoints().boxed().toList()));
-        //TODO implicitly print top stack value (if no explicit output)
+
+    void printDebugInfo(){
+        System.out.println("\n---------------");
+        System.out.println("stack:"+stack);
+        System.out.println("stackStack:"+stackStack);
+    }
+    public static void run(String code, List<Value> args, boolean debugMode) throws IOException {
+        boolean explicitIn=false,explicitOut=false,stringMode=false;
+        for(int i=0;i<code.length();i++){
+            if(stringMode){
+                if(code.charAt(i)=='\\'){
+                    i++;
+                    continue;
+                }
+                if(code.charAt(i)=='"'){
+                    stringMode=false;
+                }
+                continue;
+            }
+            if(contains(new int[]{'_','#','§'},code.charAt(i))){
+                explicitIn=true;
+                continue;
+            }
+            if(contains(new int[]{'£','¥'},code.charAt(i))){
+                explicitOut=true;
+                continue;
+            }
+            if(code.charAt(i)=='"'){
+                stringMode=true;
+                continue;
+            }
+            if(code.charAt(i)==';'){
+                while(i<code.length()&&code.charAt(i)!='\n')
+                    i++;
+                continue;
+            }
+        }
+        ItrLang program=new ItrLang();
+        program.implicitInput=!explicitIn;
+        program.stack.addAll(args);
+        program.interpret(new ArrayList<>(code.codePoints().boxed().toList()));
+        if(!explicitOut){
+            //TODO implicitly print top stack value (if no explicit output)
+            System.out.println(program.stack.peekOrDefault(Int.ZERO));
+        }
+        if(debugMode){
+            program.printDebugInfo();
+        }
     }
 
-    static void printDebugInfo(){
-        System.out.println("\n---------------");
-        System.out.println("stack:"+ItrLang.stack);
-        System.out.println("stackStack:"+ItrLang.stackStack);
-    }
     public static void main(String[] args) throws IOException {
         String code=null;
         boolean binaryMode=true,debugMode=false,hasSourceFile=false,ignoreFlags=false;
@@ -1675,6 +1754,7 @@ public class ItrLang {
                 ignoreFlags=true;
                 continue;
             }
+            //TODO help command
             if(!ignoreFlags&&args[i].equals("-f")){
                 binaryMode=false;
                 hasSourceFile=true;
@@ -1707,8 +1787,6 @@ public class ItrLang {
             System.out.print(binaryMode);
             // TODO translate source-code from/to binary and store in out
         }
-        ItrLang.run(code,progArgs.stream().map(s->parseValue(s.codePoints().boxed().toList())).toList());
-        if(debugMode||!hasSourceFile)
-            printDebugInfo();
+        ItrLang.run(code,progArgs.stream().map(s->parseValue(s.codePoints().boxed().toList())).toList(),debugMode||!hasSourceFile);
     }
 }
