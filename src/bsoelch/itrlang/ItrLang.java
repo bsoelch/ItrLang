@@ -882,7 +882,7 @@ public class ItrLang {
     static final int[] overwriteBlacklist=new int[]{';',' ','\n','»','«','"','\'','(',',',')','©','?','!','[',']'};
 
     //list of all iterator operations
-    static final int[] iteratorOps=new int[]{'µ','R','M','×','Y','C','¶'};
+    static final int[] iteratorOps=new int[]{'F','µ','R','M','×','Y','C','¶'};
     //list of all operators that are allowed as an isolated argument to a iterator operation
     static final int[] singleByteIteratorArgs=new int[]{
             ' ', '£', '¥',
@@ -1511,7 +1511,7 @@ public class ItrLang {
                         }
                         continue;
                     }
-                    // XXX? execute code ... times on copy of current stack for each element of matrix /tuple
+                    // addLater? execute code ... times on copy of current stack for each element of matrix /tuple
                     throw new UnsupportedOperationException("unsupported argument type for F: "+v.getClass().getName());
                     // continue;
                 }
