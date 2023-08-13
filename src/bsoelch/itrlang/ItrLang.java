@@ -1725,6 +1725,10 @@ public class ItrLang {
                 stringMode=true;
                 continue;
             }
+            if(code.charAt(i)=='\''){
+                i++;
+                continue;
+            }
             if(code.charAt(i)==';'){
                 while(i<code.length()&&code.charAt(i)!='\n')
                     i++;
