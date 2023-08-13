@@ -1653,20 +1653,62 @@ public class ItrLang {
         }
     }
     // TODO code -> byte conversion
-    public static void run(String code) throws IOException {
+    public static void run(String code,List<Value> args) throws IOException {
         // TODO implicit input (if no explicit input)
+        stack.addAll(args);
         interpret(new ArrayList<>(code.codePoints().boxed().toList()));
         //TODO implicitly print top stack value (if no explicit output)
     }
 
-    public static void main(String[] args) throws IOException {
-        String code="1~ 3%";
-        if(args.length>0){//TODO flags -u -> unicode source -f binary source
-            code=ItrLang.loadCode(new File(args[0]),true);
-        }
-        ItrLang.run(code);
+    static void printDebugInfo(){
         System.out.println("\n---------------");
         System.out.println("stack:"+ItrLang.stack);
         System.out.println("stackStack:"+ItrLang.stackStack);
+    }
+    public static void main(String[] args) throws IOException {
+        String code=null;
+        boolean binaryMode=true,debugMode=false,hasSourceFile=false,ignoreFlags=false;
+        File out=null;
+        ArrayList<String> progArgs=new ArrayList<>();
+        for(int i=0;i<args.length;i++){// addLater flag to run code directly
+            if(args[i].startsWith("--")){
+                ignoreFlags=true;
+                continue;
+            }
+            if(!ignoreFlags&&args[i].equals("-f")){
+                binaryMode=false;
+                hasSourceFile=true;
+                code=ItrLang.loadCode(new File(args[++i]),true);
+                continue;
+            }
+            if(!ignoreFlags&&args[i].equals("-b")){
+                binaryMode=true;
+                hasSourceFile=true;
+                code=ItrLang.loadCode(new File(args[++i]),false);
+                continue;
+            }
+            if(!ignoreFlags&&args[i].equals("-o")){
+                out=new File(args[++i]);
+                continue;
+            }
+            if(!ignoreFlags&&args[i].equals("-d")){
+                debugMode=true;
+                continue;
+            }
+            progArgs.add(args[i]);
+        }
+        if(code==null){
+            System.out.println("Missing source file, please specify a source file with one of the following arguments:");
+            System.out.println(" -f <src-file>");
+            System.out.println(" -b <src-file>");
+            return;
+        }
+        if(out!=null){
+            System.out.print(binaryMode);
+            // TODO translate source-code from/to binary and store in out
+        }
+        ItrLang.run(code,progArgs.stream().map(s->parseValue(s.codePoints().boxed().toList())).toList());
+        if(debugMode||!hasSourceFile)
+            printDebugInfo();
     }
 }
