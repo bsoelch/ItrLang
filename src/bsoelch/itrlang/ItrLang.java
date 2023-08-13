@@ -1463,6 +1463,32 @@ public class ItrLang {
                     Value a = popValue();
                     pushValue(pow(a, b));
                 }
+                case 'T' -> {
+                    Value a = popValue();
+                    if(a.isNumber()){
+                        pushValue(a);
+                        continue;
+                    }
+                    if(a instanceof Matrix){
+                        pushValue(((Matrix) a).transposed());
+                        continue;
+                    }
+                    if(a instanceof Tuple t){//transpose tuple
+                        Tuple res=new Tuple();
+                        for(int r=0;r<t.size();r++){
+                            Tuple row=t.get(r).asTuple();
+                            for(int c=0;c<row.size();c++){
+                                while(res.size()<row.size())
+                                    res.push(new Tuple(Collections.nCopies(t.size(),Int.ZERO).toArray(Value[]::new)));
+                                Tuple column=(Tuple)res.get(c);
+                                column.set(r,row.get(c));
+                            }
+                        }
+                        pushValue(res);
+                        continue;
+                    }
+                    throw new UnsupportedOperationException("cannot transpose values of type: "+a.getClass().getName());
+                }
 
                 // vector operations
                 case '¡' -> {
@@ -1473,6 +1499,21 @@ public class ItrLang {
                     Tuple b = popValue().asTuple();
                     Tuple a = popValue().asTuple();
                     pushValue(concatenate(a, b));
+                }
+                case 'F' -> {//repeat ... times
+                    ArrayList<Integer> code = new ArrayList<>();
+                    ip = readItrArgs(sourceCode, ip, code);
+                    Value v = popValue();
+                    if(v instanceof NumberValue){
+                        BigInteger max=((NumberValue) v).asInt();
+                        for(BigInteger i=BigInteger.ZERO;i.compareTo(max)<0;i=i.add(BigInteger.ONE)){
+                            interpret(code);
+                        }
+                        continue;
+                    }
+                    // XXX? execute code ... times on copy of current stack for each element of matrix /tuple
+                    throw new UnsupportedOperationException("unsupported argument type for F: "+v.getClass().getName());
+                    // continue;
                 }
                 case 'µ' -> {//map
                     ArrayList<Integer> l = new ArrayList<>();
