@@ -1329,6 +1329,16 @@ public class ItrLang {
                     Value a = popValue();
                     pushValue(binaryNumberOp(a, b, (x, y) -> new Int(BigInteger.valueOf(compareNumbers(x, y) < 0 ? 1 : 0))));
                 }
+                case 'm' -> {//minimum
+                    Value b = popValue();
+                    Value a = popValue();
+                    pushValue(binaryNumberOp(a,b,(x,y)->compareNumbers(x,y)<0?x:y));
+                }
+                case 'w' -> {//maximum
+                    Value b = popValue();
+                    Value a = popValue();
+                    pushValue(binaryNumberOp(a,b,(x,y)->compareNumbers(x,y)>0?x:y));
+                }
                 case '¬' -> {
                     Value a = popValue();
                     pushValue(unaryNumberOp(a, x -> compareNumbers(x, Int.ZERO) == 0 ? Int.ONE : Int.ZERO));
@@ -1499,6 +1509,91 @@ public class ItrLang {
                     Tuple b = popValue().asTuple();
                     Tuple a = popValue().asTuple();
                     pushValue(concatenate(a, b));
+                }
+                case 'é' -> {
+                    int n=1;
+                    Value v=popValue();
+                    if(v.isNumber()){
+                        n=((NumberValue)v).asInt().intValueExact();
+                        v=popValue();
+                    }
+                    List<Value> elts=v.toList();
+                    List<Value> head=elts.subList(0,elts.size()-n)
+                            ,tail=elts.subList(elts.size()-n,elts.size());
+                    pushValue(new Tuple(head.toArray(Value[]::new)));
+                    pushValue(tail.size()==1?tail.get(0):new Tuple(tail.toArray(Value[]::new)));
+                }
+                case 'è' -> {
+                    int n=1;
+                    Value v=popValue();
+                    if(v.isNumber()){
+                        n=((NumberValue)v).asInt().intValueExact();
+                        v=popValue();
+                    }
+                    List<Value> elts=v.toList();
+                    List<Value> head=elts.subList(0,n)
+                            ,tail=elts.subList(n,elts.size());
+                    pushValue(new Tuple(tail.toArray(Value[]::new)));
+                    pushValue(head.size()==1?head.get(0):new Tuple(head.toArray(Value[]::new)));
+                }
+                case 'ê' -> {
+                    int n=2;
+                    Value v=popValue();
+                    if(v.isNumber()){
+                        n=((NumberValue)v).asInt().intValueExact();
+                        v=popValue();
+                    }
+                    List<Value> elts=v.toList();
+                    boolean reverse=false;
+                    if(n<0){
+                        n=-n;
+                        reverse=true;
+                    }
+                    Tuple[] parts=new Tuple[n];
+                    for(int i=0;i<n;i++){
+                        int left=(int)Math.round((i*elts.size())/(double)n);
+                        int right=(int)Math.round(((i+1)*elts.size())/(double)n);
+                        parts[i]=new Tuple(elts.subList(left,right).toArray(Value[]::new));
+                    }
+                    if(reverse){
+                        for(int i=n-1;i>=0;i--){
+                            pushValue(parts[i]);
+                        }
+                    }else{
+                        for(int i=0;i<n;i++){
+                            pushValue(parts[i]);
+                        }
+                    }
+                }
+                case 'ë' -> {
+                    int n=2;
+                    Value v=popValue();
+                    if(v.isNumber()){
+                        n=((NumberValue)v).asInt().intValueExact();
+                        v=popValue();
+                    }
+                    List<Value> elts=v.toList();
+                    boolean reverse=false;
+                    if(n<0){
+                        n=-n;
+                        reverse=true;
+                    }
+                    Tuple[] parts=new Tuple[n];
+                    for(int i=0;i<n;i++){
+                        parts[i]=new Tuple();
+                    }
+                    for(int i=0;i<elts.size();i++){
+                        parts[i%n].push(elts.get(i));
+                    }
+                    if(reverse){
+                        for(int i=n-1;i>=0;i--){
+                            pushValue(parts[i]);
+                        }
+                    }else{
+                        for(int i=0;i<n;i++){
+                            pushValue(parts[i]);
+                        }
+                    }
                 }
                 case 'F' -> {//repeat ... times
                     ArrayList<Integer> code = new ArrayList<>();
