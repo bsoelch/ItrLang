@@ -890,7 +890,7 @@ public class ItrLang {
             '¬', 's', 'a', '¿', '~', '¯',
             'e', '*', '/', '\\', '^',
             '¡', '°', 'L', 'º', '¹', 'S', 'P', 'Í', 'Ì', '®'
-    };
+    };// TODO? add T to singleByte itr-ops
     static boolean contains(int[] arr,int x){
         return Arrays.stream(arr).anyMatch(i -> i == x);
     }
@@ -1078,7 +1078,7 @@ public class ItrLang {
             if(command=='\''){
                 command=readInstruction(sourceCode,ip++);
                 //push char as string
-                pushValue(new Tuple(new Int(BigInteger.valueOf(command))));
+                pushValue(new Int(BigInteger.valueOf(command)));
                 continue;
             }
             if(command=='"'){
