@@ -24,13 +24,15 @@ public interface NumberValue extends Value {
 
     @Override
     default List<Value> toList() {
-        long maxValue=asInt().longValueExact();
+        BigInteger i=asInt();
+        long maxValue=i.abs().longValueExact();
+        int sign=i.signum();
         return new AbstractList<>() {
             final int size=(int)Math.max(Math.min(maxValue,Integer.MAX_VALUE),0);
             @Override
             public Value get(int i) {
                 if(i>=0&&i<maxValue)
-                    return new Int(BigInteger.valueOf(i+1));
+                    return new Int(BigInteger.valueOf(sign*(i+1)));
                 return Int.ZERO;
             }
 

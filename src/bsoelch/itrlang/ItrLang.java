@@ -1387,9 +1387,15 @@ public class ItrLang {
                 case 'º' -> {
                     Value a = popValue();
                     if (a.isReal()) {
+                        NumberValue x=(NumberValue) a;
+                        BigInteger sign=BigInteger.ONE;
+                        if(compareNumbers(x,Int.ZERO)<0){
+                            x=negateNumber(x);
+                            sign=sign.negate();
+                        }
                         Tuple r = new Tuple();
-                        for (BigInteger i = BigInteger.ZERO; compareNumbers(new Int(i), (NumberValue) a) < 0; i = i.add(BigInteger.ONE))
-                            r.push(new Int(i));
+                        for (BigInteger i = BigInteger.ZERO; compareNumbers(new Int(i), x) < 0; i = i.add(BigInteger.ONE))
+                            r.push(new Int(i.multiply(sign)));
                         pushValue(r);
                         break;
                     }
@@ -1410,9 +1416,15 @@ public class ItrLang {
                 case '¹' -> {
                     Value a = popValue();
                     if (a.isReal()) {
+                        NumberValue x=(NumberValue) a;
+                        BigInteger sign=BigInteger.ONE;
+                        if(compareNumbers(x,Int.ZERO)<0){
+                            x=negateNumber(x);
+                            sign=sign.negate();
+                        }
                         Tuple r = new Tuple();
-                        for (BigInteger i = BigInteger.ONE; compareNumbers(new Int(i), (NumberValue) a) <= 0; i = i.add(BigInteger.ONE))
-                            r.push(new Int(i));
+                        for (BigInteger i = BigInteger.ONE; compareNumbers(new Int(i), x) <= 0; i = i.add(BigInteger.ONE))
+                            r.push(new Int(i.multiply(sign)));
                         pushValue(r);
                         break;
                     }
