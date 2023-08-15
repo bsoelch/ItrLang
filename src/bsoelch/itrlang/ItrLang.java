@@ -1386,11 +1386,15 @@ public class ItrLang {
                 }
                 case 'º' -> {
                     Value a = popValue();
-                    if (a.isNumber()) {//XXX? 2D range for complex numbers
+                    if (a.isReal()) {
                         Tuple r = new Tuple();
                         for (BigInteger i = BigInteger.ZERO; compareNumbers(new Int(i), (NumberValue) a) < 0; i = i.add(BigInteger.ONE))
                             r.push(new Int(i));
                         pushValue(r);
+                        break;
+                    }
+                    if (a instanceof Complex) {
+                        pushValue(Complex.range((Complex) a,true));
                         break;
                     }
                     if (a instanceof Tuple) {
@@ -1405,11 +1409,15 @@ public class ItrLang {
                 }//break;
                 case '¹' -> {
                     Value a = popValue();
-                    if (a.isNumber()) {//XXX? 2D range for complex numbers
+                    if (a.isReal()) {
                         Tuple r = new Tuple();
                         for (BigInteger i = BigInteger.ONE; compareNumbers(new Int(i), (NumberValue) a) <= 0; i = i.add(BigInteger.ONE))
                             r.push(new Int(i));
                         pushValue(r);
+                        break;
+                    }
+                    if (a instanceof Complex) {
+                        pushValue(Complex.range((Complex) a,false));
                         break;
                     }
                     if (a instanceof Tuple) {
@@ -1430,6 +1438,29 @@ public class ItrLang {
                         pushValue(new Int(BigInteger.valueOf(((Matrix) a).nrows())));
                     else
                         pushValue(Int.ONE);
+                }
+                case 'B' -> { // bits
+                    Value a=popValue();
+                    if(a.isNumber()){
+                        BigInteger x=((NumberValue)a).asInt();
+                        Tuple bits=new Tuple();
+                        while(x.signum()!=0){
+                            bits.push(new Int(x.and(BigInteger.ONE)));
+                            if(x.equals(BigInteger.valueOf(-1)))
+                                break;
+                            x=x.shiftRight(1);
+                        }
+                        pushValue(bits);
+                        return;
+                    }
+                    Stream<Value> t=a.toTuple().stream().flatMap(ItrLang::flatten);
+                    BigInteger n=BigInteger.ZERO,mask=BigInteger.ONE;
+                    for(Value e:(Iterable<Value>)t::iterator){
+                        if(e.asBool())
+                            n=n.add(mask);
+                        mask=mask.shiftRight(1);
+                    }
+                    pushValue(new Int(n));
                 }
                 case 'e' -> {//exponential
                     Value a = popValue();
@@ -1501,7 +1532,7 @@ public class ItrLang {
                 }
 
                 // vector operations
-                case '¡' -> {
+                case '¡' -> {// TODO reverse rows and columns when reversing matrix
                     Tuple a = popValue().asTuple();
                     pushValue(repeat(a, -1));
                 }
@@ -1678,14 +1709,17 @@ public class ItrLang {
                     Value v = popValue();
                     if (v.isNumber()) {//skip conversion of number to array and calculate result directly
                         //number is treated as if it were the 1-based range starting at that number
-                        //XXX? handle complex numbers
                         NumberValue x = (NumberValue) v;
-                        if (compareNumbers(x, Int.ZERO) <= 0) {
-                            pushValue(Int.ZERO);
+                        if(x.isReal()&&compareNumbers(x,Int.ZERO)>=0){
+                            BigInteger i = x.asInt();
+                            pushValue(new Int(i.multiply(i.add(BigInteger.ONE)).divide(BigInteger.TWO)));
                             continue;
                         }
-                        BigInteger i = x.asInt();
-                        pushValue(new Int(i.multiply(i.add(BigInteger.ONE)).divide(BigInteger.TWO)));
+                        List<Value> l=v.toList();
+                        Value S = Int.ZERO;
+                        for (Value e: l)
+                            S = add(S, e);
+                        pushValue(S);
                         continue;
                     }
                     v = v.toTuple();
@@ -1702,11 +1736,10 @@ public class ItrLang {
                     Value v = popValue();
                     if (v.isNumber()) {//skip conversion of number to array and calculate result directly
                         //number is treated as if it were the 1-based range starting at that number
-                        //XXX? handle complex numbers
-                        NumberValue x = (NumberValue) v;
-                        NumberValue P = Int.ONE;
-                        for (BigInteger i = BigInteger.ONE; compareNumbers(new Int(i), x) <= 0; i = i.add(BigInteger.ONE))
-                            P = multiplyNumbers(P, new Int(i));
+                        List<Value> l=v.toList();
+                        Value P = Int.ONE;
+                        for (Value e: l)
+                            P = multiply(P, e);
                         pushValue(P);
                         continue;
                     }
@@ -1719,6 +1752,15 @@ public class ItrLang {
                         return res[0];
                     };
                     pushValue(f[0].apply((Tuple) v));
+                }
+                case 'Z' -> {//nonzero elements
+                    Tuple v=popValue().asTuple();
+                    Tuple res=new Tuple();
+                    for(Value e:v){
+                        if(e.asBool())
+                            res.push(e);
+                    }
+                    pushValue(res);
                 }
                 case 'Ì' -> {//indices of nonzero elements
                     Tuple v = popValue().asTuple();

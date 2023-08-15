@@ -25,7 +25,7 @@ public interface NumberValue extends Value {
     @Override
     default List<Value> toList() {
         long maxValue=asInt().longValueExact();
-        return new AbstractList<>() {// addLater? 2D range for complex numbers
+        return new AbstractList<>() {
             final int size=(int)Math.max(Math.min(maxValue,Integer.MAX_VALUE),0);
             @Override
             public Value get(int i) {
