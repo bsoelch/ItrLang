@@ -1442,6 +1442,34 @@ public class ItrLang {
                     //XXX? what is the range of a matrix
                     throw new Error("unsupported operand for " + command + ": " + a.getClass().getName());
                 }//break;
+                case '¨' -> {
+                    Value b = popValue();
+                    Value a = popValue();
+                    if (a.isNumber()||b.isNumber()) {
+                        Complex A=((NumberValue)a).asComplex();
+                        Complex B=((NumberValue)b).asComplex();
+                        boolean reverseX=false,reverseY=false;
+                        BigDecimal x0=BigMath.round(A.real(),mathContext),x1=BigMath.round(B.real(),mathContext),
+                                y0=BigMath.round(A.imaginary(),mathContext),y1=BigMath.round(B.imaginary(),mathContext);
+                        // addLater? round away from center
+                        if(x0.compareTo(x1)>0){
+                            reverseX=true;
+                        }
+                        if(y0.compareTo(y1)>0){
+                            reverseY=true;
+                        }
+                        Tuple r=new Tuple();
+                        for(BigDecimal x=x0;reverseX?x.compareTo(x1)>=0:x.compareTo(x1)<=0;x=x.add(BigDecimal.valueOf(reverseX?-1:1))){
+                            for(BigDecimal y=y0;reverseY?y.compareTo(y1)>=0:y.compareTo(y1)<=0;y=y.add(BigDecimal.valueOf(reverseY?-1:1))){
+                                r.push(new Complex(x,y));
+                            }
+                        }
+                        pushValue(r);
+                        break;
+                    }
+                    // addLater ¨ for matrices and ranges
+                    throw new Error("unsupported operands for "+command+" : " + a.getClass().getName()+" and "+b.getClass().getName());
+                }//break;
                 case 'L' -> {//length
                     Value a = peekValue();
                     if (a instanceof Tuple)
@@ -1930,7 +1958,7 @@ public class ItrLang {
         program.stack.addAll(args);
         program.interpret(new ArrayList<>(code.codePoints().boxed().toList()));
         if(!explicitOut){
-            //TODO implicitly print top stack value (if no explicit output)
+            //TODO implicitly string detection
             System.out.println(program.stack.peekOrDefault(Int.ZERO));
         }
         if(debugMode){
