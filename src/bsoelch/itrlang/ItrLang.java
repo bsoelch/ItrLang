@@ -882,7 +882,7 @@ public class ItrLang {
     static final int[] overwriteBlacklist=new int[]{';',' ','\n','»','«','"','\'','(',',',')','©','?','!','[',']'};
 
     //list of all iterator operations
-    static final int[] iteratorOps=new int[]{'F','µ','R','M','×','Y','C','¶'};
+    static final int[] iteratorOps=new int[]{'F','µ','R','M','X','Y','C','¶'};
     //list of all operators that are allowed as an isolated argument to a iterator operation
     static final int[] singleByteIteratorArgs=new int[]{
             ' ', '£', '¥',
@@ -1706,7 +1706,7 @@ public class ItrLang {
                     iteratorOpMap(v, l);
                     // continue;
                 }
-                case '×' -> {//Cartesian product
+                case 'X' -> {//Cartesian product
                     ArrayList<Integer> c = new ArrayList<>();
                     ip = readItrArgs(sourceCode, ip, c);
                     List<Value> r = popValue().toList();
