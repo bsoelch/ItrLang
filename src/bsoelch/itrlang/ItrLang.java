@@ -289,6 +289,9 @@ public class ItrLang {
             }
             return res;
         }
+        if((a.isNumber()||a instanceof Matrix)&&(b.isNumber()||b instanceof Matrix)){
+            return applyFunction(multiply(applyFunction(a,"log"),b),"exp");
+        }
         if(a instanceof Tuple||b instanceof Tuple){
             Tuple arrayA=a.asTuple(),arrayB=b.asTuple(),res=new Tuple();
             res.ensureCapacity(Math.max(arrayA.size(),arrayB.size()));
@@ -1502,9 +1505,18 @@ public class ItrLang {
                     }
                     pushValue(new Int(n));
                 }
-                case 'e' -> {//exponential
+                case 'e' -> { // exponential
                     Value a = popValue();
                     pushValue(applyFunction(a, "exp"));
+                }
+                case 'n' -> { // natural logarithm
+                    Value a = popValue();
+                    pushValue(applyFunction(a, "log"));
+                }
+                case 'l' -> { // logarithm
+                    Value b = popValue();
+                    Value a = popValue();
+                    pushValue(divide_right(applyFunction(a, "log"),applyFunction(b, "log")));
                 }
                 case '½' -> {
                     Value a = popValue();
