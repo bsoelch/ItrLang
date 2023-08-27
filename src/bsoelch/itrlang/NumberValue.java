@@ -42,4 +42,9 @@ public interface NumberValue extends Value {
             }
         };
     }
+
+    @Override
+    default boolean isEqual(Value v){
+        return v instanceof NumberValue&&ItrLang.compareNumbers(this,(NumberValue) v)==0;
+    }
 }

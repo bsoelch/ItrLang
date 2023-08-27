@@ -114,14 +114,14 @@ public record Complex(BigDecimal real, BigDecimal imaginary) implements NumberVa
                         a.imaginary.multiply(b.real,mathContext),mathContext));
     }
 
-    static BigDecimal absSq(Complex z, MathContext mathContext){
-        return z.real.multiply(z.real,mathContext).add(z.imaginary.multiply(z.imaginary,mathContext),mathContext);
+    static BigDecimal absSq(Complex z){
+        return z.real.multiply(z.real).add(z.imaginary.multiply(z.imaginary));
     }
     static BigDecimal abs(Complex z, MathContext mathContext){
-        return BigMath.sqrt(absSq(z,mathContext),mathContext);
+        return BigMath.sqrt(absSq(z),mathContext);
     }
     static Complex divide(Complex a, Complex b, MathContext mathContext) {
-        BigDecimal l2=absSq(b,mathContext);
+        BigDecimal l2=absSq(b);
         return new Complex(
                 a.real.multiply(b.real,mathContext).add(
                         a.imaginary.multiply(b.imaginary,mathContext),mathContext).divide(l2,mathContext),

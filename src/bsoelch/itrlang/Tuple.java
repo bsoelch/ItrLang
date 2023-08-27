@@ -32,6 +32,19 @@ public class Tuple extends Stack<Value> implements Value {
         return false;
     }
 
+    @Override
+    public boolean isEqual(Value v) {
+        if(!(v instanceof Tuple t))
+            return false;
+        if(t.size()!=size())
+            return false;
+        for(int i=0;i<size();i++){
+            if(!get(i).isEqual(((Tuple) v).get(i)))
+                return false;
+        }
+        return true;
+    }
+
     /**first k elements of this tuple*/
     Tuple head(int k) {
         k = Math.max(0, Math.min(size(), k));

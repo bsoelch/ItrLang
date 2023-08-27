@@ -48,6 +48,16 @@ public class ItrLang {
     static Value negate(Value a){
         return unaryNumberOp(a, ItrLang::negateNumber);
     }
+    static NumberValue conjugateNumber(NumberValue a){
+        if(a.isReal())
+            return new Complex(a.asReal(),BigDecimal.ZERO);
+        if(a instanceof Complex)
+            return Complex.conjugate(a.asComplex());
+        throw new IllegalArgumentException("unsupported value type: "+a.getClass().getName());
+    }
+    static Value conjugate(Value a){
+        return unaryNumberOp(a, ItrLang::conjugateNumber);
+    }
     static NumberValue invertNumber(NumberValue a){
         if(a instanceof Int)
             return new Fraction(BigInteger.ONE,a.asInt().negate());
@@ -271,6 +281,32 @@ public class ItrLang {
         }
         throw new IllegalArgumentException("unsupported operands of remainder: "+a.getClass().getName()+"   "+a.getClass().getName());
     }
+    @SuppressWarnings("SuspiciousNameCombination")
+    static NumberValue gcd(NumberValue a, NumberValue b){
+        if(a.isReal()&&b.isReal())
+            return new Int(a.asInt().gcd(b.asInt()));
+        if(a.isReal()&&b.isReal()){
+            Complex x=CMath.round(a.asComplex(),mathContext)
+                    ,y=CMath.round(b.asComplex(),mathContext);
+            if(Complex.absSq(x).compareTo(Complex.absSq(y))<0){
+                Complex t=x;x=y;y=t;
+            }
+            while(y.real().signum()!=0||y.imaginary().signum()!=0){
+                x=remainder(x,y).asComplex();
+                Complex t=x;x=y;y=t;
+            }
+            // always choose version with positive real and non-negative imaginary part
+            if(x.real().signum()<0&&x.imaginary().signum()<=0){
+                return negateNumber(x);
+            }else if(x.imaginary().signum()<0){
+                return new Complex(x.imaginary().negate(),x.real());
+            }else if(x.real().signum()<=0){
+                return new Complex(x.imaginary(),x.real().negate());
+            }
+            return x;
+        }
+        throw new IllegalArgumentException("unsupported operands for gcd: "+a.getClass().getName()+"   "+a.getClass().getName());
+    }
     static Value pow(Value a,Value b){
         if((a.isNumber()||a instanceof Matrix)&&b.isInt()){
             BigInteger e=((NumberValue)b).asInt();
@@ -290,6 +326,11 @@ public class ItrLang {
             return res;
         }
         if((a.isNumber()||a instanceof Matrix)&&(b.isNumber()||b instanceof Matrix)){
+            if(a.isEqual(Int.ZERO)){// 0^... addLater handle zero matrix
+                if(b.isEqual(Int.ZERO))
+                    return Int.ONE;
+                return a;
+            }
             return applyFunction(multiply(applyFunction(a,"log"),b),"exp");
         }
         if(a instanceof Tuple||b instanceof Tuple){
@@ -305,6 +346,86 @@ public class ItrLang {
             return res;
         }
         throw new Error("incompatible types for exponentiation: "+a.getClass().getName()+" and "+b.getClass().getName());
+    }
+    static Complex gaussianFactorHelper(BigInteger p){
+        BigInteger p_=p.subtract(BigInteger.ONE);
+        BigInteger exponent=p_.divide(BigInteger.TWO);
+        for(BigInteger k=BigInteger.TWO;k.compareTo(p)<0;k=k.add(BigInteger.ONE)){
+            if(k.modPow(exponent,p).compareTo(p_)==0)//addLater? support for large factors
+                return (Complex)gcd(new Complex(new BigDecimal(k.pow(exponent.divide(BigInteger.TWO).intValueExact())),BigDecimal.ONE),new Int(p));
+        }
+        throw new IllegalArgumentException(p.toString());
+    }
+    static Value factorize(Value x){
+        if(x.isReal()){
+            BigInteger a=((NumberValue)x).asInt();
+            //addLater? factor fractions
+            if(a.signum()==0)
+                return new Tuple(Int.ZERO);
+            a=a.abs();
+            Tuple res=new Tuple();
+            Int f=new Int(BigInteger.TWO);
+            while(a.mod(BigInteger.TWO).signum()==0){
+                a=a.divide(BigInteger.TWO);
+                res.push(f);
+            }
+            for(BigInteger f0=BigInteger.valueOf(3);f0.multiply(f0).compareTo(a)<=0;f0=f0.add(BigInteger.TWO)){
+                if(a.mod(f0).signum()==0){
+                    f=new Int(f0);
+                    do{
+                        a=a.divide(f0);
+                        res.push(f);
+                    }while(a.mod(f0).signum()==0);
+                }
+            }
+            if(a.compareTo(BigInteger.ONE)!=0)
+                res.push(new Int(a));
+            return res;
+        }
+        if(x.isNumber()){
+            // based on this algorithm: https://stackoverflow.com/questions/2269810/whats-a-nice-method-to-factor-gaussian-integers/2271645#2271645
+            Complex a=CMath.round(((NumberValue)x).asComplex(),mathContext);
+            if(a.real().signum()==0&&a.imaginary().signum()==0)
+                return new Tuple(a);
+            BigInteger n=Complex.absSq(a).toBigInteger();
+            Tuple res=new Tuple();
+            NumberValue p=new Complex(BigDecimal.ONE,BigDecimal.ONE);
+            while(n.remainder(BigInteger.TWO).signum()==0){
+                n=n.divide(BigInteger.TWO);
+                res.push(p);
+            }
+            for(BigInteger f=BigInteger.valueOf(3);f.multiply(f).compareTo(n)<=0;f=f.add(BigInteger.TWO)){
+                if(f.mod(BigInteger.valueOf(4)).compareTo(BigInteger.ONE)==0){
+                    if(n.mod(f).signum()==0) {
+                        p = gaussianFactorHelper(f);
+                        do{
+                            n = n.divide(f);
+                            res.push(p);
+                        }while (n.mod(f).signum() == 0);
+                    }
+                }else{
+                    if(n.mod(f).signum()==0) {
+                        p = new Int(f);
+                        BigInteger f2=f.multiply(f);
+                        do{
+                            n = n.divide(f2);
+                            res.push(p);
+                        }while (n.mod(f).signum() == 0);
+                    }
+                }
+            }
+            if(n.compareTo(BigInteger.ONE)!=0){
+                if(n.mod(BigInteger.valueOf(4)).compareTo(BigInteger.ONE)==0){
+                    res.push(gaussianFactorHelper(n));
+                }else{
+                    throw new UnsupportedOperationException("unexpected value for norm");
+                }
+            }
+            return res;
+        }
+        // TODO factor matrix -> Jordan decomposition
+        // addLater? factor array -> polynomial factorization
+        throw new UnsupportedOperationException("unsupported type for factorization: ${a.constructor.name}");
     }
 
     static int compareNumbers(NumberValue a,NumberValue b){
@@ -422,7 +543,23 @@ public class ItrLang {
         throw new UnsupportedOperationException("unsupported value type: "+arg.getClass().getName());
     }
 
-    static Tuple repeat(Tuple a, @SuppressWarnings("SameParameterValue") int n){
+    static Value repeat(Value a,Value b){
+        if(b.isNumber()){
+            return repeat(a.asTuple(),((NumberValue)b).asInt().intValueExact());
+        }else if(a.isNumber()){
+            return repeat(b.asTuple(),((NumberValue)a).asInt().intValueExact());
+        }
+        if(a instanceof Tuple&&b instanceof Tuple){
+            int l=Math.min(((Tuple) a).size(),((Tuple) b).size());
+            Tuple res=new Tuple();
+            for(int i=0;i<l;i++){
+                res.addAll(repeat(((Tuple) a).get(i),((Tuple) b).get(i)).asTuple());
+            }
+            return res;
+        }
+        throw new IllegalArgumentException("unsupported operands for repeat: "+a.getClass().getName()+"   "+a.getClass().getName());
+    }
+    static Tuple repeat(Tuple a,int n){
         final int aLen=a.size();
         boolean reverse=false;
         if(n==0)
@@ -615,17 +752,45 @@ public class ItrLang {
     private interface ParserToken{}
     private record ValueToken(NumberValue value) implements ParserToken{}
     private record OperatorToken(int op) implements ParserToken{}
+    private static void finishParseNumber(ArrayList<ParserToken> expr,String current,
+                                          int base,int fractionalDigits){
+        if(current.length()>0||fractionalDigits>=0){
+            if(fractionalDigits>=0){
+                BigInteger magnitude=new BigInteger(current,base);
+                if(base==10){
+                    expr.add(new ValueToken(new Real(new BigDecimal(magnitude,fractionalDigits))));
+                }else{
+                    expr.add(new ValueToken(new Real(new BigDecimal(magnitude)
+                                    .divide(BigDecimal.valueOf(base)
+                                                    .pow(fractionalDigits,mathContext),mathContext))));
+                }
+            }else{
+                expr.add(new ValueToken(new Int(new BigInteger(current,base))));
+            }
+        }
+    }
     private static Value tryParseNumber(List<Integer> str) {
         ArrayList<ParserToken> expr=new ArrayList<>();
         StringBuilder current=new StringBuilder();
         int base=10;//supported bases: 2-10 or 16
-        for(int c:str){// TODO support floats
+        int fractionalDigits=-1;
+        for(int c:str){
             if(c>='0'&&(c<=Math.min('0'+(base-1),'9'))){
                 current.append((char)c);
+                if(fractionalDigits>=0)
+                    fractionalDigits++;
                 continue;
             }
             if(base==16&&((c>='A'&&c<='F')||(c>='a'&&c<='f'))){
                 current.append((char)c);
+                if(fractionalDigits>=0)
+                    fractionalDigits++;
+                continue;
+            }
+            if(c=='.'){
+                if(fractionalDigits>=0)
+                    return null;//double dot
+                fractionalDigits=0;
                 continue;
             }
             if(current.toString().equals("0")&&c=='x'){//hex literal
@@ -637,17 +802,15 @@ public class ItrLang {
                 continue;
             }
             if(isItrSpace(c)){
-                if(!current.isEmpty()){
-                    expr.add(new ValueToken(new Int(new BigInteger(current.toString(),base))));
-                }
+                finishParseNumber(expr,current.toString(),base,fractionalDigits);
+                fractionalDigits=-1;
                 base=10;
                 current.setLength(0);
                 continue;
             }
             if(contains(new int[]{'+','-','*','/','I','J','K','i','j','k'},c)){
-                if(!current.isEmpty()){
-                    expr.add(new ValueToken(new Int(new BigInteger(current.toString(),base))));
-                }
+                finishParseNumber(expr,current.toString(),base,fractionalDigits);
+                fractionalDigits=-1;
                 base=10;
                 expr.add(new OperatorToken(c));
                 current.setLength(0);
@@ -655,9 +818,7 @@ public class ItrLang {
             }
             return null;//invalid char
         }
-        if(!current.isEmpty()){
-            expr.add(new ValueToken(new Int(new BigInteger(current.toString(),base))));
-        }
+        finishParseNumber(expr,current.toString(),base,fractionalDigits);
         for(int i=0;i<expr.size();i++){// '\' and imaginary units
             if(expr.get(i) instanceof OperatorToken&&((OperatorToken) expr.get(i)).op=='/'){
                 NumberValue l=Int.ONE,r=Int.ONE;
@@ -885,8 +1046,8 @@ public class ItrLang {
     static final int[] overwriteBlacklist=new int[]{';',' ','\n','»','«','"','\'','(',',',')','©','?','!','[',']'};
 
     //list of all iterator operations
-    static final int[] iteratorOps=new int[]{'F','µ','R','M','X','Y','C','¶'};
-    //list of all operators that are allowed as an isolated argument to a iterator operation
+    static final int[] iteratorOps=new int[]{'F','µ','R','M','G','X','Y','C','¶'};
+    //list of all operators that are allowed as an isolated argument to an iterator operation
     static final int[] singleByteIteratorArgs=new int[]{
             ' ', '£', '¥',
             '+', '-', '·', '÷', ':', '%', 'd', '&', '|', 'x', '>', '=', '<',
@@ -1014,6 +1175,30 @@ public class ItrLang {
             interpret(code);
         }
     }
+    void iteratorOpGroups(List<Value> v, ArrayList<Integer> code) throws IOException {
+        if(v.isEmpty())
+            return;
+        Tuple group=new Tuple();
+        Value prev=null;
+        for(Value e:v){
+            if(prev==null){
+                group.push(e);
+                prev=e;
+                continue;
+            }
+            if(!prev.isEqual(e)){
+                pushValue(group);
+                interpret(code);
+                prev=e;
+                group.clear();
+                group.push(e);
+            }
+        }
+        if(prev!=null){
+            pushValue(group);
+            interpret(code);
+        }
+    }
     void iteratorOpSubsets(List<Value> v, ArrayList<Integer> code) throws IOException {
         BigInteger setId=BigInteger.ZERO,mask;
         int i;
@@ -1069,8 +1254,15 @@ public class ItrLang {
         }
     }
 
+    void finishedNumber(int fractionalDigits) throws IOException {
+        if(fractionalDigits>0){
+            Value v=popValue();
+            pushValue(new Real(((NumberValue)v).asReal().scaleByPowerOfTen(-fractionalDigits)));
+        }
+    }
     void interpret(ArrayList<Integer> sourceCode) throws IOException {
         boolean numberMode=false;
+        int fractionalDigits=-1;
 
         int command;
         for (int ip = 0; ip < sourceCode.size();) {
@@ -1132,7 +1324,21 @@ public class ItrLang {
                 pushValue(o.asValue);
                 continue;
             }
+            if(command=='.'){
+                if(fractionalDigits>=0){
+                    finishedNumber(fractionalDigits);
+                    numberMode=false;
+                }
+                fractionalDigits=0;
+                if(!numberMode){
+                    pushValue(Int.ZERO);
+                    numberMode=true;
+                }
+                continue;
+            }
             if(command>='0'&&command<='9'){
+                if(fractionalDigits>=0)
+                    fractionalDigits++;
                 if(numberMode){
                     BigInteger v=((NumberValue)popValue()).asInt();
                     pushValue(BigInteger.TEN.multiply(v).add(BigInteger.valueOf(command-'0')));
@@ -1143,6 +1349,8 @@ public class ItrLang {
                 continue;
             }
             numberMode=false;
+            finishedNumber(fractionalDigits);
+            fractionalDigits=-1;
             switch (command) {
                 //noinspection DataFlowIssue (redundant switch labels)
                 case '0','1','2','3','4','5','6','7','8','9', // digits have already handled
@@ -1233,8 +1441,9 @@ public class ItrLang {
                         popValue();
 
                 // IO
-                case '_' -> // read byte
-                        pushValue(BigInteger.valueOf(in.read()));
+                // TODO read byte
+                case '¢' -> // read char
+                        pushValue(BigInteger.valueOf(in.readCodepoint()));
                 case '#' -> // parse word
                         readValue();
 
@@ -1342,6 +1551,11 @@ public class ItrLang {
                     Value a = popValue();
                     pushValue(binaryNumberOp(a,b,(x,y)->compareNumbers(x,y)>0?x:y));
                 }
+                case 'g' -> {//gcd
+                    Value b = popValue();
+                    Value a = popValue();
+                    pushValue(binaryNumberOp(a,b, ItrLang::gcd));
+                }
                 case '¬' -> {
                     Value a = popValue();
                     pushValue(unaryNumberOp(a, x -> compareNumbers(x, Int.ZERO) == 0 ? Int.ONE : Int.ZERO));
@@ -1382,6 +1596,10 @@ public class ItrLang {
                 case '~' -> {
                     Value a = popValue();
                     pushValue(negate(a));
+                }
+                case 'c' -> {
+                    Value a = popValue();
+                    pushValue(conjugate(a));
                 }
                 case '¯' -> {
                     Value a = popValue();
@@ -1518,6 +1736,10 @@ public class ItrLang {
                     Value a = popValue();
                     pushValue(divide_right(applyFunction(a, "log"),applyFunction(b, "log")));
                 }
+                case 'r' -> { // square root
+                    Value a = popValue();
+                    pushValue(applyFunction(a, "sqrt"));
+                }
                 case '½' -> {
                     Value a = popValue();
                     pushValue(binaryNumberOp(a, new Int(BigInteger.valueOf(2)), ItrLang::realDivide));
@@ -1534,7 +1756,10 @@ public class ItrLang {
                     Value a = popValue();
                     pushValue(multiply(a, multiply(a, a)));
                 }
-
+                case 'f' -> {
+                    Value a = popValue();
+                    pushValue(factorize(a));
+                }
                 // matrix operations
                 case '*' -> {
                     Value b = popValue();
@@ -1556,8 +1781,10 @@ public class ItrLang {
                     Value a = popValue();
                     pushValue(pow(a, b));
                 }
-                case 'T' -> {
+                case 'T','H' -> {
                     Value a = popValue();
+                    if(command=='H')
+                        a=conjugate(a);
                     if(a.isNumber()){
                         pushValue(a);
                         continue;
@@ -1592,6 +1819,11 @@ public class ItrLang {
                     Tuple b = popValue().asTuple();
                     Tuple a = popValue().asTuple();
                     pushValue(concatenate(a, b));
+                }
+                case '×' -> {
+                    Tuple b = popValue().asTuple();
+                    Tuple a = popValue().asTuple();
+                    pushValue(repeat(a, b));
                 }
                 case 'é' -> {
                     int n=1;
@@ -1708,6 +1940,15 @@ public class ItrLang {
                     List<Value> v = popValue().toList();
                     openStack();
                     iteratorOpReduce(v, l);
+                    closeStack();
+                    // continue;
+                }
+                case 'G' -> {//groups
+                    ArrayList<Integer> l = new ArrayList<>();
+                    ip = readItrArgs(sourceCode, ip, l);
+                    List<Value> v = popValue().toList();
+                    openStack();
+                    iteratorOpGroups(v, l);
                     closeStack();
                     // continue;
                 }
@@ -1867,6 +2108,8 @@ public class ItrLang {
             }
             // if there is ever code after the switch statement make sure to check all branches marked with continue
         }
+        if(numberMode)
+            finishedNumber(fractionalDigits);
     }
 
     public static String loadCode(File src,boolean utf8Mode) throws IOException {
@@ -1943,7 +2186,7 @@ public class ItrLang {
                 }
                 continue;
             }
-            if(contains(new int[]{'_','#','§'},code.charAt(i))){
+            if(contains(new int[]{'¢','#','§'},code.charAt(i))){
                 explicitIn=true;
                 continue;
             }

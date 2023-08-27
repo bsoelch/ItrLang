@@ -24,5 +24,5 @@ public interface Value {
 
     boolean isNumber();
 
-
+    boolean isEqual(Value v);
 }

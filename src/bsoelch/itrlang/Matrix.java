@@ -80,6 +80,21 @@ public class Matrix implements Value{
     }
 
     @Override
+    public boolean isEqual(Value v) {
+        if(!(v instanceof Matrix m))
+            return false;
+        int nrows=Math.max(this.nrows,m.nrows);
+        int ncolumns=Math.max(this.ncolumns,m.ncolumns);
+        for(int r=0;r<nrows;r++){
+            for(int c=0;c<ncolumns;c++){
+                if(!at(r,c).isEqual(m.at(r,c)))
+                    return false;
+            }
+        }
+        return true;
+    }
+
+    @Override
     public String toString() {
         StringBuilder s=new StringBuilder("(");
         this.rows.forEach(r->{
