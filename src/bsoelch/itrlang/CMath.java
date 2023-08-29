@@ -10,9 +10,11 @@ public class CMath {
     private CMath() {}
 
     static Complex simplify(Complex z,MathContext mc){
-        if(z.real().abs().ulp().compareTo(z.imaginary().abs())>=0)//imaginary part is insignificant
+        BigDecimal re=z.real().abs();
+        BigDecimal im=z.imaginary().abs();
+        if(re.compareTo(im)>0&&re.ulp().compareTo(im)>=0)//imaginary part is insignificant
             return new Complex(BigMath.simplify(z.real(),mc),BigDecimal.ZERO);
-        if(z.imaginary().abs().ulp().compareTo(z.real().abs())>=0)//real part is insignificant
+        if(im.compareTo(re)>0&&im.ulp().compareTo(re)>=0)//real part is insignificant
             return new Complex(BigDecimal.ZERO,BigMath.simplify(z.imaginary(),mc));
         return new Complex(BigMath.simplify(z.real(),mc),BigMath.simplify(z.imaginary(),mc));
     }
@@ -150,9 +152,9 @@ public class CMath {
                 mc);
     }
     public static Complex acosh(Complex z,MathContext mc) {
-        //log(x+sqrt(x²-1))
+        //log(x+sqrt(x+1)sqrt(x-1))
         return simplify(
-                ln(Complex.add(z,sqrt(Complex.subtract(Complex.multiply(z,z,mc), Complex.ONE,mc),mc),mc),mc),
+                ln(Complex.add(z,Complex.multiply(sqrt(Complex.add(z,Complex.ONE,mc),mc),sqrt(Complex.subtract(z,Complex.ONE,mc),mc),mc),mc),mc),
                 mc);
     }
     public static Complex atanh(Complex z,MathContext mc) {

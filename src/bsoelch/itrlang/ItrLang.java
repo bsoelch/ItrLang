@@ -14,6 +14,7 @@ public class ItrLang {
     static MathContext mathContext = new MathContext(BigMath.defaultPrecision);
     /**inverse of logarithm of 2, needed for binary logarithm*/
     static BigDecimal LOG2INV;
+    static BigDecimal LOG10INV;
     static BigDecimal PI;
 
     static{
@@ -22,6 +23,7 @@ public class ItrLang {
     static void recomputeConstants(){
         MathContext extended=new MathContext(mathContext.getPrecision()+2, mathContext.getRoundingMode());
         LOG2INV=BigDecimal.ONE.divide(BigMath.ln(BigDecimal.valueOf(2),extended),extended);
+        LOG10INV=BigDecimal.ONE.divide(BigMath.ln(BigDecimal.valueOf(10),extended),extended);
         PI=CMath.ln(new Complex(BigDecimal.valueOf(-1),BigDecimal.ZERO),extended).imaginary();
     }
 
@@ -499,8 +501,8 @@ public class ItrLang {
                 case "asinh" -> { return new Real(BigMath.asinh(x.asReal(),mathContext)); }
                 case "acosh" -> {
                     BigDecimal v=x.asReal();
-                    if(v.abs().compareTo(BigDecimal.ONE)>0)
-                        return CMath.asin(new Complex(v,BigDecimal.ZERO),mathContext);
+                    if(v.compareTo(BigDecimal.ONE)<0)
+                        return CMath.acosh(new Complex(v,BigDecimal.ZERO),mathContext);
                     return new Real(BigMath.acosh(v,mathContext));
                 }
                 case "atanh" -> {
@@ -539,6 +541,7 @@ public class ItrLang {
         if(arg instanceof Tuple){
             Tuple clone= (Tuple) ((Tuple)arg).clone();
             clone.replaceAll(value -> applyFunction(value, name));
+            return clone;
         }
         throw new UnsupportedOperationException("unsupported value type: "+arg.getClass().getName());
     }
@@ -1254,6 +1257,44 @@ public class ItrLang {
         }
     }
 
+    void evaluateFunction(int command,int page) throws IOException {
+        switch (command){
+            case 's'->{
+                Value a=popValue();
+                pushValue(applyFunction(a,page==0?"sin":"asin"));
+            }
+            case 'c'->{
+                Value a=popValue();
+                pushValue(applyFunction(a,page==0?"cos":"acos"));
+            }
+            case 't'->{
+                Value a=popValue();
+                pushValue(applyFunction(a,page==0?"tan":"atan"));
+            }
+            case 'S'->{
+                Value a=popValue();
+                pushValue(applyFunction(a,page==0?"sinh":"asinh"));
+            }
+            case 'C'->{
+                Value a=popValue();
+                pushValue(applyFunction(a,page==0?"cosh":"acosh"));
+            }
+            case 'T'->{
+                Value a=popValue();
+                pushValue(applyFunction(a,page==0?"tanh":"atanh"));
+            }
+            case 'l'->{ //log2/log10
+                Value a=popValue();
+                a=applyFunction(a,"log");
+                pushValue(binaryNumberOp(a,new Real(page==0?LOG2INV:LOG10INV),ItrLang::multiplyNumbers));
+            }
+            // floor round ceil  (? different rounding modes)
+            // real-part,imaginary-part,numerator,denominator (? a,b,c,d)
+            // gG -> gamma function&related functions
+            // z -> ? zeta function
+        }
+    }
+
     void finishedNumber(int fractionalDigits) throws IOException {
         if(fractionalDigits>0){
             Value v=popValue();
@@ -1739,6 +1780,14 @@ public class ItrLang {
                 case 'r' -> { // square root
                     Value a = popValue();
                     pushValue(applyFunction(a, "sqrt"));
+                }
+                case 'æ' -> { // functions page 0
+                    command=readInstruction(sourceCode,ip++);
+                    evaluateFunction(command,0);
+                }
+                case 'Æ' -> { // functions page 1
+                    command=readInstruction(sourceCode,ip++);
+                    evaluateFunction(command,1);
                 }
                 case '½' -> {
                     Value a = popValue();
