@@ -4,6 +4,7 @@ import java.io.*;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.MathContext;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.function.BiFunction;
@@ -11,7 +12,7 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 
 public class ItrLang {
-    static MathContext mathContext = new MathContext(BigMath.defaultPrecision);
+    static MathContext mathContext = new MathContext(BigMath.defaultPrecision, RoundingMode.HALF_EVEN);
     /**inverse of logarithm of 2, needed for binary logarithm*/
     static BigDecimal LOG2INV;
     static BigDecimal LOG10INV;

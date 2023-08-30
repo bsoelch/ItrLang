@@ -51,10 +51,9 @@ public record Fraction(BigInteger numerator, BigInteger denominator) implements 
         if(divMod[1].signum()==0)
             return divMod[0];
         divMod[1]=divMod[1].shiftLeft(1);
-        if(divMod[1].compareTo(denominator)>=0)
-            return divMod[0].add(BigInteger.ONE);
-        if(divMod[1].negate().compareTo(denominator)>0)
-            return divMod[0].subtract(BigInteger.ONE);
+        int cmp=divMod[1].abs().compareTo(denominator);
+        if(cmp>0||(cmp==0&&divMod[0].and(BigInteger.ONE).signum()!=0))
+            return divMod[0].add(BigInteger.valueOf(divMod[1].signum()));
         return divMod[0];
     }
 

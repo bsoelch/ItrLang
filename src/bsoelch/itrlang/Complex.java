@@ -13,7 +13,7 @@ public record Complex(BigDecimal real, BigDecimal imaginary) implements NumberVa
 
     @Override
     public BigInteger asInt() {
-        return real.toBigInteger();
+        return BigMath.round(real,ItrLang.mathContext).toBigInteger();
     }
 
     @Override

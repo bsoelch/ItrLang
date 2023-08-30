@@ -220,12 +220,7 @@ public class BigMath {
     }
     /**round to the nearest integer*/
     public static BigDecimal round(BigDecimal x,MathContext mc) {
-        BigDecimal fractional=x.remainder(BigDecimal.ONE,mc);
-        if(fractional.compareTo(ONE_HALF)>=0)
-            return x.add(BigDecimal.ONE.subtract(fractional,mc),mc);
-        if(fractional.compareTo(MINUS_ONE_HALF)<=0)
-            return x.subtract(BigDecimal.ONE.add(fractional,mc),mc);
-        return x.subtract(fractional,mc);
+        return x.setScale(0,mc.getRoundingMode());
     }
 
 
