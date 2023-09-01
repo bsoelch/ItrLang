@@ -696,13 +696,13 @@ public class ItrLang {
     Stack<Tuple> stackStack;
     UTF8Input in;
     boolean implicitInput=false;
-    private ItrLang(){
+    private ItrLang(Value ... initValues){
         Console c=System.console();
         if (c == null||c.charset().equals(StandardCharsets.UTF_8))
             in=UTF8Input.fromBytes(System.in);
         else // translate native encoding to UTF8
             in=UTF8Input.fromChars(new InputStreamReader(System.in,c.charset()));
-        stack=new Tuple();
+        stack=new Tuple(initValues);
         stackStack=new Stack<>();
     }
 
@@ -1172,49 +1172,45 @@ public class ItrLang {
         return ip-(op==';'?1:0);
     }
 
-    void iteratorOpMap(Sequence v, ArrayList<Integer> code) throws IOException {
-        // FIXME evaluate iterators lazily
+    void iteratorOpMapToStack(Sequence v, ArrayList<Integer> code) throws IOException {
         for(Value e: v){
             pushValue(e);
             interpret(code);
         }
     }
     void iteratorOpReduce(Sequence v, ArrayList<Integer> code) throws IOException {
-        if(v.size()==0)
-            return;
         Iterator<Value> itr=v.iterator();
-        pushValue(itr.next());
         if(!itr.hasNext())
             return;
+        pushValue(itr.next());
         while(itr.hasNext()){
             pushValue(itr.next());
             interpret(code);
         }
     }
-    void iteratorOpGroups(Sequence v, ArrayList<Integer> code) throws IOException {
-        if(v.size()==0)
-            return;
-        Tuple group=new Tuple();
-        Value prev=null;
-        for(Value e:v){
-            if(prev==null){
-                group.push(e);
-                prev=e;
-                continue;
-            }
-            if(!prev.isEqual(e)){
-                pushValue(group);
-                interpret(code);
-                prev=e;
-                group.clear();
-                group.push(e);
-            }
-        }
-        if(prev!=null){
-            pushValue(group);
-            interpret(code);
+
+    void iteratorOpMap(Sequence v, ArrayList<Integer> code) throws IOException {
+        try {
+            pushValue(MappedSequence.from(v, e -> new ItrLang(e).tryRun(code).popOrDefault(Int.ZERO)));
+        }catch (UncheckedIOException io){
+            throw io.getCause();
         }
     }
+    void iteratorOpFlatMap(Sequence v, ArrayList<Integer> code) throws IOException {
+        try {
+            pushValue(FlatMappedSequence.from(v, e -> new ItrLang(e).tryRun(code)));
+        }catch (UncheckedIOException io){
+            throw io.getCause();
+        }
+    }
+    void iteratorOpGroups(Sequence v, ArrayList<Integer> code) throws IOException {
+        try {
+            pushValue(GroupedSequence.from(v,e -> new ItrLang(e).tryRun(code).popOrDefault(Int.ZERO)));
+        }catch (UncheckedIOException io){
+            throw io.getCause();
+        }
+    }
+    // TODO change iterator code to lazy evaluation where possible
     void iteratorOpSubsets(Sequence v, ArrayList<Integer> code) throws IOException {
         BigInteger setId=BigInteger.ZERO,mask;
         int i;
@@ -1307,10 +1303,13 @@ public class ItrLang {
                 }
                 if(page==1){// random element
                     Sequence a=popValue().toSequence();
-                    if(a.size()==0)
+                    if(!a.iterator().hasNext())
                         return;
-                    if(a.isFinite())// finite sequence -> uniform distribution
-                        pushValue(a.asRASequence().get((int)(Math.random()*a.size())));// addLater only need specific element not random access
+                    //addLater different algorithm for random element in non-RA sequence
+                    if(a.isFinite()) {// finite sequence -> uniform distribution
+                        Tuple t=a.asTuple();//addLater avoid generating list of all elements, just count elements and return random one
+                        pushValue(t.get((int) (Math.random() * t.size())));
+                    }
                     // TODO get element of infinite sequence
                 }
             }
@@ -1321,6 +1320,14 @@ public class ItrLang {
         }
     }
 
+    Tuple tryRun(ArrayList<Integer> code){
+        try{
+            interpret(code);
+        }catch (IOException io){
+            throw new UncheckedIOException(io);
+        }
+        return stack;
+    }
     void finishedNumber(int fractionalDigits) throws IOException {
         if(fractionalDigits>0){
             Value v=popValue();
@@ -2018,13 +2025,12 @@ public class ItrLang {
                     throw new UnsupportedOperationException("unsupported argument type for F: "+v.getClass().getName());
                     // continue;
                 }
-                case 'µ' -> {//map
+                // TODO regular map operation
+                case 'µ' -> {//flat-map
                     ArrayList<Integer> l = new ArrayList<>();
                     ip = readItrArgs(sourceCode, ip, l);
                     Sequence v = popValue().toSequence();
-                    openStack();
-                    iteratorOpMap(v, l);
-                    closeStack();
+                    iteratorOpFlatMap(v, l);
                     // continue;
                 }
                 case 'R' -> {//reduce
@@ -2040,16 +2046,14 @@ public class ItrLang {
                     ArrayList<Integer> l = new ArrayList<>();
                     ip = readItrArgs(sourceCode, ip, l);
                     Sequence v = popValue().toSequence();
-                    openStack();
                     iteratorOpGroups(v, l);
-                    closeStack();
                     // continue;
                 }
-                case 'M' -> {//flat-map
+                case 'M' -> {//stack-map
                     ArrayList<Integer> l = new ArrayList<>();
                     ip = readItrArgs(sourceCode, ip, l);
                     Sequence v = popValue().toSequence();
-                    iteratorOpMap(v, l);
+                    iteratorOpMapToStack(v, l);
                     // continue;
                 }
                 case 'X' -> {//Cartesian product

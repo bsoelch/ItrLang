@@ -4,6 +4,7 @@ import java.math.BigInteger;
 import java.util.Iterator;
 
 public interface RandomAccessSequence extends Sequence {
+    int size();
     Value get(int index);
 
     Value get(BigInteger index);

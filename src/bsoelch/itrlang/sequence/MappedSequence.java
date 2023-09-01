@@ -36,10 +36,6 @@ public class MappedSequence implements Sequence{
             }
         };
     }
-    @Override
-    public int size() {
-        return base.size();
-    }
 
     @Override
     public boolean isFinite() {

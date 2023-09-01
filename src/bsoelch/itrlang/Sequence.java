@@ -1,22 +1,22 @@
 package bsoelch.itrlang;
 
-import bsoelch.itrlang.sequence.BuffredSequence;
+import bsoelch.itrlang.sequence.BufferedSequence;
 
 public interface Sequence extends Value,Iterable<Value>{
-    int size();
     boolean isFinite();
     @Override
     default Tuple asTuple() {
         if(!isFinite())
             throw new UnsupportedOperationException("cannot convert infinite sequence to Tuple");
         Tuple res=new Tuple();
-        res.ensureCapacity(size());
+        if(this instanceof RandomAccessSequence)
+            res.ensureCapacity(((RandomAccessSequence)this).size());
         for(Value v:this)
             res.add(v);
         return res;
     }
     default RandomAccessSequence asRASequence(){
-        return new BuffredSequence(this);
+        return new BufferedSequence(this);
     }
 
     @Override
@@ -27,7 +27,7 @@ public interface Sequence extends Value,Iterable<Value>{
 
     @Override
     default boolean asBool() {
-        return size() > 0;// TODO? infinite version of "any element is true"
+        return iterator().hasNext();// TODO? infinite version of "any element is true"
     }
     @Override
     default boolean isInt() {

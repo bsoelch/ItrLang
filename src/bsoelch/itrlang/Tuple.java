@@ -3,7 +3,7 @@ package bsoelch.itrlang;
 import java.math.BigInteger;
 
 public class Tuple extends Stack<Value> implements Value,RandomAccessSequence {
-    Tuple(Value... elts) {
+    public Tuple(Value... elts) {
         super(elts);
     }
 

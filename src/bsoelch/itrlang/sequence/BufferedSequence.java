@@ -8,13 +8,17 @@ import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Iterator;
 
-public class BuffredSequence implements RandomAccessSequence {
+public class BufferedSequence implements RandomAccessSequence {
     private final ArrayList<Value> buffer;
     private final Iterator<Value> generator;
     private final Sequence base;
-    public BuffredSequence(Sequence base) {
+    public BufferedSequence(Sequence base) {
         buffer=new ArrayList<>();
         generator=base.iterator();
+        for(int i=0;i<16;i++){//buffer the first 16 elements
+            if(generator.hasNext())
+                buffer.add(generator.next());
+        }
         this.base=base;
     }
 
@@ -32,7 +36,7 @@ public class BuffredSequence implements RandomAccessSequence {
     }
     @Override
     public int size() {
-        return Math.max(base.size(), base.size());
+        return buffer.size();
     }
     @Override
     public boolean isFinite() {

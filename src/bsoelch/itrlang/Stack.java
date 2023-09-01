@@ -13,7 +13,7 @@ public class Stack<T> extends ArrayList<T> {
         super(Arrays.asList(elts));
     }
 
-    void push(T val) {
+    public void push(T val) {
         add(val);
     }
 
