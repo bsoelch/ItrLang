@@ -1888,29 +1888,44 @@ public class ItrLang {
                 }
                 case 'é' -> {
                     int n=1;
+                    boolean implicitIndex=true;
                     Value v=popValue();
                     if(v.isNumber()){
                         n=((NumberValue)v).asInt().intValueExact();
+                        implicitIndex=false;
                         v=popValue();
                     }
+                    //addLater handle index out of bounds
                     List<Value> elts=v.toList();
                     List<Value> head=elts.subList(0,elts.size()-n)
                             ,tail=elts.subList(elts.size()-n,elts.size());
                     pushValue(new Tuple(head.toArray(Value[]::new)));
-                    pushValue(tail.size()==1?tail.get(0):new Tuple(tail.toArray(Value[]::new)));
+                    if(implicitIndex){
+                        if(tail.size()==1)
+                            pushValue(tail.get(0));
+                        break;
+                    }
+                    pushValue(new Tuple(tail.toArray(Value[]::new)));
                 }
                 case 'è' -> {
                     int n=1;
+                    boolean implicitIndex=true;
                     Value v=popValue();
                     if(v.isNumber()){
                         n=((NumberValue)v).asInt().intValueExact();
+                        implicitIndex=false;
                         v=popValue();
                     }
                     List<Value> elts=v.toList();
                     List<Value> head=elts.subList(0,n)
                             ,tail=elts.subList(n,elts.size());
                     pushValue(new Tuple(tail.toArray(Value[]::new)));
-                    pushValue(head.size()==1?head.get(0):new Tuple(head.toArray(Value[]::new)));
+                    if(implicitIndex){
+                        if(head.size()==1)
+                            pushValue(head.get(0));
+                        break;
+                    }
+                    pushValue(new Tuple(head.toArray(Value[]::new)));
                 }
                 case 'ê' -> {
                     int n=2;
