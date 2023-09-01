@@ -1,5 +1,7 @@
 package bsoelch.itrlang;
 
+import bsoelch.itrlang.sequence.*;
+
 import java.io.*;
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -34,6 +36,9 @@ public class ItrLang {
         }
         if(a instanceof Tuple){
             return new Tuple(((Tuple) a).stream().map(x->unaryNumberOp(x,f)).toArray(Value[]::new));
+        }
+        if(a instanceof Sequence){
+            return MappedSequence.from((Sequence) a,x->unaryNumberOp(x,f));
         }
         throw new IllegalArgumentException("unsupported operands of binary number operation: "+a.getClass().getName()+"   "+a.getClass().getName());
     }
@@ -81,6 +86,9 @@ public class ItrLang {
             return Matrix.invert((Matrix) a);
         if(a instanceof Tuple)
             return new Tuple(((Tuple) a).stream().map(ItrLang::invert).toArray(Value[]::new));
+        if(a instanceof Sequence){
+            return MappedSequence.from((Sequence) a,ItrLang::invert);
+        }
         throw new IllegalArgumentException("unsupported value type for invert: "+a.getClass().getName());
     }
 
@@ -126,6 +134,7 @@ public class ItrLang {
             }
             return new Matrix(res);
         }
+        // TODO Sequence
         if(a.isNumber()&&b instanceof Tuple){
             return new Tuple(((Tuple) b).stream().map(x->binaryNumberOp(a,x,f)).toArray(Value[]::new));
         }
@@ -216,6 +225,7 @@ public class ItrLang {
             }
             return new Matrix(res);
         }
+        //TODO Sequence
         if(a.isNumber()&&b instanceof Tuple){
             return new Tuple(((Tuple) b).stream().map(x->binaryMatrixOp(a,x,fM,fN)).toArray(Value[]::new));
         }
@@ -1162,25 +1172,27 @@ public class ItrLang {
         return ip-(op==';'?1:0);
     }
 
-    void iteratorOpMap(List<Value> v, ArrayList<Integer> code) throws IOException {
-        for(Value e:v){
+    void iteratorOpMap(Sequence v, ArrayList<Integer> code) throws IOException {
+        // FIXME evaluate iterators lazily
+        for(Value e: v){
             pushValue(e);
             interpret(code);
         }
     }
-    void iteratorOpReduce(List<Value> v, ArrayList<Integer> code) throws IOException {
-        if(v.isEmpty())
+    void iteratorOpReduce(Sequence v, ArrayList<Integer> code) throws IOException {
+        if(v.size()==0)
             return;
-        pushValue(v.get(0));
-        if(v.size()==1)
+        Iterator<Value> itr=v.iterator();
+        pushValue(itr.next());
+        if(!itr.hasNext())
             return;
-        for(Value e:v.subList(1,v.size())){
-            pushValue(e);
+        while(itr.hasNext()){
+            pushValue(itr.next());
             interpret(code);
         }
     }
-    void iteratorOpGroups(List<Value> v, ArrayList<Integer> code) throws IOException {
-        if(v.isEmpty())
+    void iteratorOpGroups(Sequence v, ArrayList<Integer> code) throws IOException {
+        if(v.size()==0)
             return;
         Tuple group=new Tuple();
         Value prev=null;
@@ -1203,16 +1215,17 @@ public class ItrLang {
             interpret(code);
         }
     }
-    void iteratorOpSubsets(List<Value> v, ArrayList<Integer> code) throws IOException {
+    void iteratorOpSubsets(Sequence v, ArrayList<Integer> code) throws IOException {
         BigInteger setId=BigInteger.ZERO,mask;
         int i;
-        while(setId.bitLength()<=v.size()){
+        RandomAccessSequence r=v.asRASequence();
+        while(setId.bitLength()<=r.size()){
             mask=BigInteger.ONE;
             i=0;
             Tuple set=new Tuple();
             while(mask.bitLength()<=setId.bitLength()){
                 if(setId.and(mask).signum()!=0)
-                    set.push(v.get(i));
+                    set.push(r.get(i));
                 mask=mask.shiftLeft(1);
                 i++;
             }
@@ -1221,40 +1234,38 @@ public class ItrLang {
             setId=setId.add(BigInteger.ONE);
         }
     }
-    void iteratorOpZip(List<Value> l,List<Value> r, ArrayList<Integer> code) throws IOException {
-        int i=0;
-        for(;i<l.size()&&i<r.size();i++){
-            pushValue(l.get(i));
-            pushValue(r.get(i));
+    void iteratorOpZip(Sequence l0,Sequence r0, ArrayList<Integer> code) throws IOException {
+        Iterator<Value> l=l0.iterator();
+        Iterator<Value> r=r0.iterator();
+        while(l.hasNext()&&r.hasNext()){
+            pushValue(l.next());
+            pushValue(r.next());
             interpret(code);
         }
-        for(;i<l.size();i++){
-            pushValue(l.get(i));
+        while(l.hasNext()){
+            pushValue(l.next());
             pushValue(Int.ZERO);
             interpret(code);
         }
-        for(;i<r.size();i++){
+        while(r.hasNext()){
             pushValue(Int.ZERO);
-            pushValue(r.get(i));
+            pushValue(r.next());
             interpret(code);
         }
     }
-    void iteratorOpCauchy(List<Value> l,List<Value> r, ArrayList<Integer> code) throws IOException {
+    void iteratorOpCauchy(Sequence l0,Sequence r0,boolean wrapDiagonals, ArrayList<Integer> code) throws IOException {
+        RandomAccessSequence l=l0.asRASequence();
+        RandomAccessSequence r=r0.asRASequence();
         for(int s=0;s<l.size()+r.size()-1;s++){
-            for(int i=Math.max(0,s-r.size()+1);i<l.size();i++){
+            if(wrapDiagonals)
+                openStack();
+            for(int i=Math.max(0,s-r.size()+1);i<l.size()&&i<=s;i++){
                 pushValue(l.get(i));
                 pushValue(r.get(s-i));
                 interpret(code);
             }
-        }
-    }
-    void iteratorOpTimes(List<Value> l,List<Value> r, ArrayList<Integer> code) throws IOException {
-        for (Value value : l) {
-            for (Value item : r) {
-                pushValue(value);
-                pushValue(item);
-                interpret(code);
-            }
+            if(wrapDiagonals)
+                closeStack();
         }
     }
 
@@ -1295,9 +1306,12 @@ public class ItrLang {
                     return;
                 }
                 if(page==1){// random element
-                    List<Value> a=popValue().toList();
-                    if(a.size()>0)// list has at least one element
-                        pushValue(a.get((int)(Math.random()*a.size())));
+                    Sequence a=popValue().toSequence();
+                    if(a.size()==0)
+                        return;
+                    if(a.isFinite())// finite sequence -> uniform distribution
+                        pushValue(a.asRASequence().get((int)(Math.random()*a.size())));// addLater only need specific element not random access
+                    // TODO get element of infinite sequence
                 }
             }
             // floor round ceil  (? different rounding modes)
@@ -1854,6 +1868,7 @@ public class ItrLang {
                         pushValue(((Matrix) a).transposed());
                         continue;
                     }
+                    // TODO sequence
                     if(a instanceof Tuple t){//transpose tuple
                         Tuple res=new Tuple();
                         for(int r=0;r<t.size();r++){
@@ -1896,7 +1911,7 @@ public class ItrLang {
                         v=popValue();
                     }
                     //addLater handle index out of bounds
-                    List<Value> elts=v.toList();
+                    Tuple elts=v.toSequence().asTuple();
                     List<Value> head=elts.subList(0,elts.size()-n)
                             ,tail=elts.subList(elts.size()-n,elts.size());
                     pushValue(new Tuple(head.toArray(Value[]::new)));
@@ -1916,7 +1931,7 @@ public class ItrLang {
                         implicitIndex=false;
                         v=popValue();
                     }
-                    List<Value> elts=v.toList();
+                    Tuple elts=v.toSequence().asTuple();
                     List<Value> head=elts.subList(0,n)
                             ,tail=elts.subList(n,elts.size());
                     pushValue(new Tuple(tail.toArray(Value[]::new)));
@@ -1934,7 +1949,7 @@ public class ItrLang {
                         n=((NumberValue)v).asInt().intValueExact();
                         v=popValue();
                     }
-                    List<Value> elts=v.toList();
+                    Tuple elts=v.toSequence().asTuple();
                     boolean reverse=false;
                     if(n<0){
                         n=-n;
@@ -1963,7 +1978,7 @@ public class ItrLang {
                         n=((NumberValue)v).asInt().intValueExact();
                         v=popValue();
                     }
-                    List<Value> elts=v.toList();
+                    Tuple elts=v.toSequence().asTuple();
                     boolean reverse=false;
                     if(n<0){
                         n=-n;
@@ -1986,6 +2001,8 @@ public class ItrLang {
                         }
                     }
                 }
+                case 'N' -> // N -> sequence of all integers
+                    pushValue(Integers.N);
                 case 'F' -> {//repeat ... times
                     ArrayList<Integer> code = new ArrayList<>();
                     ip = readItrArgs(sourceCode, ip, code);
@@ -2004,7 +2021,7 @@ public class ItrLang {
                 case 'µ' -> {//map
                     ArrayList<Integer> l = new ArrayList<>();
                     ip = readItrArgs(sourceCode, ip, l);
-                    List<Value> v = popValue().toList();
+                    Sequence v = popValue().toSequence();
                     openStack();
                     iteratorOpMap(v, l);
                     closeStack();
@@ -2013,7 +2030,7 @@ public class ItrLang {
                 case 'R' -> {//reduce
                     ArrayList<Integer> l = new ArrayList<>();
                     ip = readItrArgs(sourceCode, ip, l);
-                    List<Value> v = popValue().toList();
+                    Sequence v = popValue().toSequence();
                     openStack();
                     iteratorOpReduce(v, l);
                     closeStack();
@@ -2022,7 +2039,7 @@ public class ItrLang {
                 case 'G' -> {//groups
                     ArrayList<Integer> l = new ArrayList<>();
                     ip = readItrArgs(sourceCode, ip, l);
-                    List<Value> v = popValue().toList();
+                    Sequence v = popValue().toSequence();
                     openStack();
                     iteratorOpGroups(v, l);
                     closeStack();
@@ -2031,25 +2048,25 @@ public class ItrLang {
                 case 'M' -> {//flat-map
                     ArrayList<Integer> l = new ArrayList<>();
                     ip = readItrArgs(sourceCode, ip, l);
-                    List<Value> v = popValue().toList();
+                    Sequence v = popValue().toSequence();
                     iteratorOpMap(v, l);
                     // continue;
                 }
                 case 'X' -> {//Cartesian product
                     ArrayList<Integer> c = new ArrayList<>();
                     ip = readItrArgs(sourceCode, ip, c);
-                    List<Value> r = popValue().toList();
-                    List<Value> l = popValue().toList();
+                    Sequence r = popValue().toSequence();
+                    Sequence l = popValue().toSequence();
                     openStack();
-                    iteratorOpTimes(l, r, c);
+                    iteratorOpCauchy(l, r,false, c);
                     closeStack();
                     // continue;
                 }
                 case 'Y' -> {//zip
                     ArrayList<Integer> c = new ArrayList<>();
                     ip = readItrArgs(sourceCode, ip, c);
-                    List<Value> r = popValue().toList();
-                    List<Value> l = popValue().toList();
+                    Sequence r = popValue().toSequence();
+                    Sequence l = popValue().toSequence();
                     openStack();
                     iteratorOpZip(l, r, c);
                     closeStack();
@@ -2058,17 +2075,17 @@ public class ItrLang {
                 case 'C' -> {//cauchy-product
                     ArrayList<Integer> c = new ArrayList<>();
                     ip = readItrArgs(sourceCode, ip, c);
-                    List<Value> r = popValue().toList();
-                    List<Value> l = popValue().toList();
+                    Sequence r = popValue().toSequence();
+                    Sequence l = popValue().toSequence();
                     openStack();
-                    iteratorOpCauchy(l, r, c);
+                    iteratorOpCauchy(l, r,true, c);
                     closeStack();
                     // continue;
                 }
                 case '¶' -> {// power set
                     ArrayList<Integer> l = new ArrayList<>();
                     ip = readItrArgs(sourceCode, ip, l);
-                    List<Value> v = popValue().toList();
+                    Sequence v = popValue().toSequence();
                     openStack();
                     iteratorOpSubsets(v, l);
                     closeStack();
@@ -2084,7 +2101,7 @@ public class ItrLang {
                             pushValue(new Int(i.multiply(i.add(BigInteger.ONE)).divide(BigInteger.TWO)));
                             continue;
                         }
-                        List<Value> l=v.toList();
+                        Sequence l=v.toSequence();
                         Value S = Int.ZERO;
                         for (Value e: l)
                             S = add(S, e);
@@ -2105,7 +2122,7 @@ public class ItrLang {
                     Value v = popValue();
                     if (v.isNumber()) {//skip conversion of number to array and calculate result directly
                         //number is treated as if it were the 1-based range starting at that number
-                        List<Value> l=v.toList();
+                        Sequence l=v.toSequence();
                         Value P = Int.ONE;
                         for (Value e: l)
                             P = multiply(P, e);

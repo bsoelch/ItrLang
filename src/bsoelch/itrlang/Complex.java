@@ -3,8 +3,7 @@ package bsoelch.itrlang;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.MathContext;
-import java.util.AbstractList;
-import java.util.List;
+import java.util.Iterator;
 
 public record Complex(BigDecimal real, BigDecimal imaginary) implements NumberValue {
     // TODO change complex to also support fraction as real/imaginary part
@@ -54,26 +53,55 @@ public record Complex(BigDecimal real, BigDecimal imaginary) implements NumberVa
         return real.toString() + (imaginary.signum()<0?"-i*":"+i*") + imaginary.abs();
     }
 
-    @Override
-    public List<Value> toList() {
-        long rows=BigMath.floor(imaginary,ItrLang.mathContext).abs().longValueExact()+1;
-        long size=rows*(BigMath.floor(real,ItrLang.mathContext).abs().longValueExact()+1)-1;
-        return new AbstractList<>() {
-            final int length=(int)Math.max(Math.min(size,Integer.MAX_VALUE),0);
-            @Override
-            public Value get(int i) {
-                if(i<0&&i>=length)
-                    return Int.ZERO;
-                long re=real.signum()*((i+1)/rows);
-                long im=imaginary.signum()*((i+1)%rows);
-                return new Complex(BigDecimal.valueOf(re),BigDecimal.valueOf(im));
-            }
+    public static class ComplexRange implements RandomAccessSequence{
+        BigInteger rows;
+        BigInteger size;
+        int realSign,imagSign;
+        int length;
+        public ComplexRange(BigDecimal real,BigDecimal imaginary){
+            rows=BigMath.floor(imaginary,ItrLang.mathContext).toBigIntegerExact().abs().add(BigInteger.ONE);
+            size=rows.multiply(BigMath.floor(real,ItrLang.mathContext).toBigIntegerExact().abs().add(BigInteger.ONE)).subtract(BigInteger.ONE);
+            realSign=real.signum();
+            imagSign=imaginary.signum();
+            length=size.compareTo(BigInteger.valueOf(Integer.MAX_VALUE))>0?Integer.MAX_VALUE:size.intValueExact();
+        }
+        @Override
+        public Value get(BigInteger i) {
+            if(i.signum()<0&&i.compareTo(size)>=0)
+                return Int.ZERO;
+            BigInteger[] dm=i.add(BigInteger.ONE).divideAndRemainder(rows);
+            BigInteger re=BigInteger.valueOf(realSign).multiply(dm[0]);
+            BigInteger im=BigInteger.valueOf(imagSign).multiply(dm[1]);
+            return new Complex(new BigDecimal(re),new BigDecimal(im));
+        }
+        @Override
+        public Value get(int index) {
+            return get(BigInteger.valueOf(index));
+        }
 
-            @Override
-            public int size() {
-                return length;
-            }
-        };
+        @Override
+        public int size() {
+            return length;
+        }
+        @Override
+        public Iterator<Value> iterator() {
+            return length<Integer.MAX_VALUE?new IndexIterator(this,length):new BigIndexIterator(this,size);
+        }
+        @Override
+        public boolean isFinite() {
+            return true;
+        }
+        @Override
+        public boolean isEqual(Value v) {
+            return v instanceof ComplexRange&&
+                    ((ComplexRange) v).realSign==realSign&&((ComplexRange) v).imagSign==imagSign&&
+                    ((ComplexRange) v).size.equals(size)&&((ComplexRange) v).rows.equals(rows);
+        }
+    }
+
+    @Override
+    public Sequence toSequence() {
+        return new ComplexRange(real,imaginary);
     }
 
     public static Value range(Complex to, boolean zeroBased) {

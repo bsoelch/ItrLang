@@ -9,3 +9,4 @@
 !src/*/
 !src/bsoelch/itrlang/
 !src/bsoelch/itrlang/*
+!src/bsoelch/itrlang/sequence/*

@@ -1,6 +1,8 @@
 package bsoelch.itrlang;
 
-public class Tuple extends Stack<Value> implements Value {
+import java.math.BigInteger;
+
+public class Tuple extends Stack<Value> implements Value,RandomAccessSequence {
     Tuple(Value... elts) {
         super(elts);
     }
@@ -11,25 +13,18 @@ public class Tuple extends Stack<Value> implements Value {
     }
 
     @Override
+    public Value get(BigInteger index) {
+        return get(index.intValueExact());
+    }
+
+    @Override
     public boolean asBool() {
         return stream().anyMatch(Value::asBool);
     }
 
     @Override
-    public boolean isInt() {
-        return false;
-    }
-    @Override
-    public boolean isRational() {
-        return false;
-    }
-    @Override
-    public boolean isReal() {
-        return false;
-    }
-    @Override
-    public boolean isNumber() {
-        return false;
+    public boolean isFinite() {
+        return true;
     }
 
     @Override
