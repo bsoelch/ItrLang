@@ -1289,6 +1289,17 @@ public class ItrLang {
                 a=applyFunction(a,"log");
                 pushValue(binaryNumberOp(a,new Real(page==0?LOG2INV:LOG10INV),ItrLang::multiplyNumbers));
             }
+            case 'r'->{ // random
+                if(page==0){
+                    pushValue(new Real(BigDecimal.valueOf(Math.random())));// addLater? big decimal RNG
+                    return;
+                }
+                if(page==1){// random element
+                    List<Value> a=popValue().toList();
+                    if(a.size()>0)// list has at least one element
+                        pushValue(a.get((int)(Math.random()*a.size())));
+                }
+            }
             // floor round ceil  (? different rounding modes)
             // real-part,imaginary-part,numerator,denominator (? a,b,c,d)
             // gG -> gamma function&related functions
