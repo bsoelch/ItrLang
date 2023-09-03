@@ -1210,26 +1210,14 @@ public class ItrLang {
             throw io.getCause();
         }
     }
-    // TODO change iterator code to lazy evaluation where possible
     void iteratorOpSubsets(Sequence v, ArrayList<Integer> code) throws IOException {
-        BigInteger setId=BigInteger.ZERO,mask;
-        int i;
-        RandomAccessSequence r=v.asRASequence();
-        while(setId.bitLength()<=r.size()){
-            mask=BigInteger.ONE;
-            i=0;
-            Tuple set=new Tuple();
-            while(mask.bitLength()<=setId.bitLength()){
-                if(setId.and(mask).signum()!=0)
-                    set.push(r.get(i));
-                mask=mask.shiftLeft(1);
-                i++;
-            }
-            pushValue(set);
-            interpret(code);
-            setId=setId.add(BigInteger.ONE);
+        try {
+            pushValue(SubsetSequence.from(v,e -> new ItrLang(e).tryRun(code).popOrDefault(Int.ZERO)));
+        }catch (UncheckedIOException io){
+            throw io.getCause();
         }
     }
+    // TODO change iterator code to lazy evaluation where possible
     void iteratorOpZip(Sequence l0,Sequence r0, ArrayList<Integer> code) throws IOException {
         Iterator<Value> l=l0.iterator();
         Iterator<Value> r=r0.iterator();
@@ -1542,7 +1530,7 @@ public class ItrLang {
                 case '¥' -> {// write char(s)
                     Tuple t = popValue().asTuple();
                     t.stream().flatMap(ItrLang::flatten).
-                            forEach(b -> writeCodepoint(b.asInt().add(BigInteger.valueOf(0xff)).intValueExact()));
+                            forEach(b -> writeCodepoint(b.asInt().intValueExact()));
                 }
                 case '£' -> // write value
                         System.out.print(popValue());
@@ -1938,16 +1926,16 @@ public class ItrLang {
                         implicitIndex=false;
                         v=popValue();
                     }
-                    Tuple elts=v.toSequence().asTuple();
-                    List<Value> head=elts.subList(0,n)
-                            ,tail=elts.subList(n,elts.size());
-                    pushValue(new Tuple(tail.toArray(Value[]::new)));
+                    Sequence elts=v.toSequence();
+                    Sequence head=elts.head(n),tail=elts.tail(n);
+                    pushValue(tail);
                     if(implicitIndex){
-                        if(head.size()==1)
-                            pushValue(head.get(0));
+                        RandomAccessSequence raHead=head.asRASequence();
+                        if(raHead.hasIndex(BigInteger.ZERO))//size is equal to 1
+                            pushValue(raHead.get(0));
                         break;
                     }
-                    pushValue(new Tuple(head.toArray(Value[]::new)));
+                    pushValue(head);
                 }
                 case 'ê' -> {
                     int n=2;
@@ -2090,9 +2078,7 @@ public class ItrLang {
                     ArrayList<Integer> l = new ArrayList<>();
                     ip = readItrArgs(sourceCode, ip, l);
                     Sequence v = popValue().toSequence();
-                    openStack();
                     iteratorOpSubsets(v, l);
-                    closeStack();
                     // continue;
                 }//break;
                 case 'S' -> {// sum
@@ -2180,10 +2166,10 @@ public class ItrLang {
                         }));
                         continue;
                     }
-                    final Tuple t = v.toTuple();
+                    final RandomAccessSequence t = v.toSequence().asRASequence();// addLater? version that does not store all intermediate values
                     pushValue(unaryNumberOp(I, (e) -> {
-                        int i = e.asInt().intValueExact();
-                        return i >= 0 && i < t.size() ? t.get(i) : Int.ZERO;
+                        BigInteger i = e.asInt();
+                        return t.hasIndex(i) ? t.get(i) : Int.ZERO;
                     }));
                 }
                 case '®' -> {// vector to matrix

@@ -4,7 +4,6 @@ import bsoelch.itrlang.Sequence;
 import bsoelch.itrlang.Tuple;
 import bsoelch.itrlang.Value;
 
-import java.util.Iterator;
 import java.util.function.Function;
 
 public class GroupedSequence implements Sequence{
@@ -19,51 +18,54 @@ public class GroupedSequence implements Sequence{
         this.base = base;
         this.key=key;
     }
-    /*
-        if(v.size()==0)
-            return;
-        for(Value e:v){
 
+
+    private class GroupItr implements SequenceIterator{
+        final SequenceIterator baseItr;
+        final Tuple group;// addLater? handle case of infinitely large groups
+        Value prevKey;
+        GroupItr(SequenceIterator baseItr,Tuple group,Value prevKey){
+            this.baseItr=baseItr;
+            this.group=group;
+            this.prevKey=prevKey;
         }
-        if(prev!=null){
-            pushValue(group);
-            interpret(code);
-        }*/
-    @Override
-    public Iterator<Value> iterator() {
-        return new Iterator<>() {
-            final Iterator<Value> baseItr=base.iterator();
-            final Tuple group=new Tuple();// FIXME groups may be infinitely large
-            Value prevKey=null;
-            @Override
-            public boolean hasNext() {
-                return group.size()>0||baseItr.hasNext();
-            }
-            @Override
-            public Value next() {
-                while(baseItr.hasNext()){
-                    Value e=baseItr.next();
-                    Value k=key.apply(e);
-                    if(prevKey==null){
-                        group.push(e);
-                        prevKey=k;
-                        continue;
-                    }
-                    if(prevKey.isEqual(k)) {
-                        group.push(e);
-                        continue;
-                    }
-                    Value next=(Tuple)group.clone();
-                    prevKey=k;
-                    group.clear();
+        @Override
+        public boolean hasNext() {
+            return group.size()>0||baseItr.hasNext();
+        }
+        @Override
+        public Value next() {
+            while(baseItr.hasNext()){
+                Value e=baseItr.next();
+                Value k=key.apply(e);
+                if(prevKey==null){
                     group.push(e);
-                    return next;
+                    prevKey=k;
+                    continue;
+                }
+                if(prevKey.isEqual(k)) {
+                    group.push(e);
+                    continue;
                 }
                 Value next=(Tuple)group.clone();
+                prevKey=k;
                 group.clear();
+                group.push(e);
                 return next;
             }
-        };
+            Value next=(Tuple)group.clone();
+            group.clear();
+            return next;
+        }
+
+        @Override
+        public SequenceIterator split() {
+            return new GroupItr(baseItr.split(),(Tuple)group.clone(),prevKey);
+        }
+    }
+    @Override
+    public SequenceIterator iterator() {
+        return new GroupItr(base.iterator(),new Tuple(),null);
     }
 
     @Override

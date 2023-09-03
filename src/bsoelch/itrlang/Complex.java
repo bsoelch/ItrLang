@@ -1,9 +1,10 @@
 package bsoelch.itrlang;
 
+import bsoelch.itrlang.sequence.SequenceIterator;
+
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.MathContext;
-import java.util.Iterator;
 
 public record Complex(BigDecimal real, BigDecimal imaginary) implements NumberValue {
     // TODO change complex to also support fraction as real/imaginary part
@@ -83,9 +84,15 @@ public record Complex(BigDecimal real, BigDecimal imaginary) implements NumberVa
         public int size() {
             return length;
         }
+
         @Override
-        public Iterator<Value> iterator() {
-            return length<Integer.MAX_VALUE?new IndexIterator(this,length):new BigIndexIterator(this,size);
+        public boolean hasIndex(BigInteger i) {
+            return i.signum()>=0&&i.compareTo(size)<0;
+        }
+
+        @Override
+        public SequenceIterator iterator() {
+            return length<Integer.MAX_VALUE?new IndexIterator(this):new BigIndexIterator(this);
         }
         @Override
         public boolean isFinite() {

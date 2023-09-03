@@ -1,5 +1,7 @@
 package bsoelch.itrlang;
 
+import bsoelch.itrlang.sequence.SequenceIterator;
+
 import java.math.BigInteger;
 
 public class Tuple extends Stack<Value> implements Value,RandomAccessSequence {
@@ -41,15 +43,28 @@ public class Tuple extends Stack<Value> implements Value,RandomAccessSequence {
     }
 
     /**first k elements of this tuple*/
-    Tuple head(int k) {
+    @Override
+    public Tuple head(int k) {
         k = Math.max(0, Math.min(size(), k));
         return new Tuple(subList(0, k).toArray(new Value[0]));
     }
-    /**last k elements of this tuple*/
-    Tuple tail(int k) {
-        k = Math.max(0, Math.min(size(), k));
-        return new Tuple(subList(size() - k, size()).toArray(new Value[0]));
+    /**remove the first k elements from this tuple*/
+    @Override
+    public Tuple tail(int k) {
+        k = Math.max(0, Math.min(size(), k+1));
+        return new Tuple(subList(k,size()).toArray(new Value[0]));
     }
+
+    @Override
+    public boolean hasIndex(BigInteger i) {
+        return i.signum()>=0&&i.compareTo(BigInteger.valueOf(size()))<0;
+    }
+
+    @Override
+    public SequenceIterator iterator() {
+        return new RandomAccessSequence.IndexIterator(this);
+    }
+
     void truncate(int newSize){
         if(newSize<size())
             removeRange(newSize,size());

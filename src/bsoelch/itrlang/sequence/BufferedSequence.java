@@ -15,10 +15,6 @@ public class BufferedSequence implements RandomAccessSequence {
     public BufferedSequence(Sequence base) {
         buffer=new ArrayList<>();
         generator=base.iterator();
-        for(int i=0;i<16;i++){//buffer the first 16 elements
-            if(generator.hasNext())
-                buffer.add(generator.next());
-        }
         this.base=base;
     }
 
@@ -31,12 +27,21 @@ public class BufferedSequence implements RandomAccessSequence {
     }
 
     @Override
+    public boolean hasIndex(BigInteger i) {
+        if(i.signum()<0)
+            return false;
+        while(BigInteger.valueOf(buffer.size()).compareTo(i)<0&&generator.hasNext())
+            buffer.add(generator.next());
+        return BigInteger.valueOf(buffer.size()).compareTo(i)<0;
+    }
+
+    @Override
     public Value get(BigInteger index) {
         return get(index.intValueExact());
     }
     @Override
     public int size() {
-        return buffer.size();
+        return buffer.size()+(generator.hasNext()?1:0);
     }
     @Override
     public boolean isFinite() {
@@ -47,7 +52,7 @@ public class BufferedSequence implements RandomAccessSequence {
         return base.isEqual(v);
     }
     @Override
-    public Iterator<Value> iterator() {
-        return buffer.iterator();
+    public SequenceIterator iterator() {
+        return new RandomAccessSequence.IndexIterator(this);
     }
 }

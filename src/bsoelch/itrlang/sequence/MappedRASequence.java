@@ -4,7 +4,6 @@ import bsoelch.itrlang.RandomAccessSequence;
 import bsoelch.itrlang.Value;
 
 import java.math.BigInteger;
-import java.util.Iterator;
 import java.util.function.Function;
 
 public class MappedRASequence implements RandomAccessSequence {
@@ -17,18 +16,8 @@ public class MappedRASequence implements RandomAccessSequence {
     }
 
     @Override
-    public Iterator<Value> iterator() {
-        return new Iterator<>() {
-            final Iterator<Value> baseItr=base.iterator();
-            @Override
-            public boolean hasNext() {
-                return baseItr.hasNext();
-            }
-            @Override
-            public Value next() {
-                return map.apply(baseItr.next());
-            }
-        };
+    public SequenceIterator iterator() {
+        return new MappedSequence.MappedIterator(base.iterator(),map);
     }
     @Override
     public Value get(int index) {
@@ -38,6 +27,11 @@ public class MappedRASequence implements RandomAccessSequence {
     @Override
     public Value get(BigInteger index) {
         return map.apply(base.get(index));
+    }
+
+    @Override
+    public boolean hasIndex(BigInteger i) {
+        return base.hasIndex(i);
     }
 
     @Override

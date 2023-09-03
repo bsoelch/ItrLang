@@ -3,44 +3,57 @@ package bsoelch.itrlang.sequence;
 import bsoelch.itrlang.Sequence;
 import bsoelch.itrlang.Value;
 
-import java.util.Iterator;
 import java.util.function.Function;
 
 public class FlatMappedSequence implements Sequence{
-    public static Sequence from(Sequence a, Function<Value,Iterable<Value>> map) {
+    public static Sequence from(Sequence a, Function<Value,Sequence> map) {
         return new FlatMappedSequence(a,map);
     }
 
     private final Sequence base;
-    protected final Function<Value,Iterable<Value>> map;
+    protected final Function<Value,Sequence> map;
 
-    private FlatMappedSequence(Sequence base, Function<Value,Iterable<Value>> map) {
+    private FlatMappedSequence(Sequence base, Function<Value,Sequence> map) {
         this.base = base;
         this.map=map;
     }
-    @Override
-    public Iterator<Value> iterator() {
-        return new Iterator<>() {
-            final Iterator<Value> baseItr=base.iterator();
-            Iterator<Value> currentItr=baseItr.hasNext()?map.apply(baseItr.next()).iterator():null;
-            @Override
-            public boolean hasNext() {
-                return currentItr!=null&&currentItr.hasNext();
+    private class FlatMapItr implements SequenceIterator{
+        final SequenceIterator baseItr;
+        SequenceIterator currentItr;
+
+        FlatMapItr(SequenceIterator baseItr,SequenceIterator current){
+            this.baseItr=baseItr;
+            this.currentItr=current;
+            if(current==null){
+                this.currentItr=baseItr.hasNext()?map.apply(baseItr.next()).iterator():null;
             }
-            @Override
-            public Value next() {
-                Value next=currentItr.next();
-                while(!(currentItr.hasNext())){
-                    if(baseItr.hasNext())
-                        currentItr=map.apply(baseItr.next()).iterator();
-                    else{
-                        currentItr=null;
-                        break;
-                    }
+        }
+
+        @Override
+        public boolean hasNext() {
+            return currentItr!=null&&currentItr.hasNext();
+        }
+        @Override
+        public Value next() {
+            Value next=currentItr.next();
+            while(!(currentItr.hasNext())){
+                if(baseItr.hasNext())
+                    currentItr=map.apply(baseItr.next()).iterator();
+                else{
+                    currentItr=null;
+                    break;
                 }
-                return next;
             }
-        };
+            return next;
+        }
+        @Override
+        public SequenceIterator split() {
+            return new FlatMapItr(baseItr.split(),currentItr.split());
+        }
+    }
+    @Override
+    public SequenceIterator iterator() {
+        return new FlatMapItr(base.iterator(),null);
     }
 
     @Override

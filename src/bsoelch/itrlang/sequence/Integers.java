@@ -5,7 +5,6 @@ import bsoelch.itrlang.RandomAccessSequence;
 import bsoelch.itrlang.Value;
 
 import java.math.BigInteger;
-import java.util.Iterator;
 
 public class Integers implements RandomAccessSequence {
     public static final Integers N=new Integers();
@@ -23,25 +22,18 @@ public class Integers implements RandomAccessSequence {
         return Integer.MAX_VALUE;
     }
     @Override
+    public boolean hasIndex(BigInteger i) {
+        return i.signum()>=0;
+    }
+
+    @Override
     public boolean isFinite() {
         return false;
     }
 
     @Override
-    public Iterator<Value> iterator() {
-        return new Iterator<>() {
-            BigInteger current=BigInteger.ZERO;
-            @Override
-            public boolean hasNext() {
-                return true;
-            }
-            @Override
-            public Value next() {
-                BigInteger prev=current;
-                current=current.add(BigInteger.ONE);
-                return new Int(prev);
-            }
-        };
+    public SequenceIterator iterator() {
+        return new BigIndexIterator(this);
     }
 
     @Override

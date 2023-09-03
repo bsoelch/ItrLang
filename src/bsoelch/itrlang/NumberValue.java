@@ -1,8 +1,9 @@
 package bsoelch.itrlang;
 
+import bsoelch.itrlang.sequence.SequenceIterator;
+
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.util.Iterator;
 
 public interface NumberValue extends Value {
     BigDecimal asReal();
@@ -44,16 +45,20 @@ public interface NumberValue extends Value {
             return Int.ZERO;
         }
         @Override
-        public Iterator<Value> iterator() {
-            return size<Integer.MAX_VALUE?new IndexIterator(this,size):new BigIndexIterator(this,maxValue);
+        public SequenceIterator iterator() {
+            return size<Integer.MAX_VALUE?new IndexIterator(this):new BigIndexIterator(this);
         }
         @Override
-        public boolean isFinite() {
-            return true;
+        public boolean hasIndex(BigInteger i) {
+            return i.signum()>=0&&i.compareTo(maxValue)<0;
         }
         @Override
         public int size() {
             return size;
+        }
+        @Override
+        public boolean isFinite() {
+            return true;
         }
         @Override
         public boolean isEqual(Value v) {

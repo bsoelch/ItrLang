@@ -4,7 +4,6 @@ import bsoelch.itrlang.RandomAccessSequence;
 import bsoelch.itrlang.Sequence;
 import bsoelch.itrlang.Value;
 
-import java.util.Iterator;
 import java.util.function.Function;
 
 public class MappedSequence implements Sequence{
@@ -22,19 +21,28 @@ public class MappedSequence implements Sequence{
         this.base = base;
         this.map=map;
     }
-    @Override
-    public Iterator<Value> iterator() {
-        return new Iterator<>() {
-            final Iterator<Value> baseItr=base.iterator();
-            @Override
-            public boolean hasNext() {
+
+    record MappedIterator(SequenceIterator baseItr, Function<Value, Value> map) implements SequenceIterator {
+        @Override
+        public boolean hasNext() {
                 return baseItr.hasNext();
             }
-            @Override
-            public Value next() {
+        @Override
+        public Value next() {
                 return map.apply(baseItr.next());
             }
-        };
+        @Override
+        public void skip(int k) {
+            baseItr.skip(k);
+        }
+        @Override
+        public SequenceIterator split() {
+            return new MappedIterator(baseItr.split(), map);
+        }
+    }
+    @Override
+    public SequenceIterator iterator() {
+        return new MappedIterator(base.iterator(),map);
     }
 
     @Override

@@ -1,6 +1,10 @@
 package bsoelch.itrlang;
 
 import bsoelch.itrlang.sequence.BufferedSequence;
+import bsoelch.itrlang.sequence.SequenceIterator;
+import bsoelch.itrlang.sequence.TailSequence;
+
+import java.util.Iterator;
 
 public interface Sequence extends Value,Iterable<Value>{
     boolean isFinite();
@@ -17,6 +21,18 @@ public interface Sequence extends Value,Iterable<Value>{
     }
     default RandomAccessSequence asRASequence(){
         return new BufferedSequence(this);
+    }
+    default Sequence head(int k) {
+        Tuple elts=new Tuple();
+        Iterator<Value> values=iterator();
+        for(int i=0;values.hasNext()&&i<k;i++){
+            elts.add(values.next());
+        }
+        return elts;
+    }
+
+    default Sequence tail(int k) {
+      return new TailSequence(this,k);
     }
 
     @Override
@@ -45,4 +61,7 @@ public interface Sequence extends Value,Iterable<Value>{
     default boolean isNumber() {
         return false;
     }
+
+    @Override
+    SequenceIterator iterator();
 }
