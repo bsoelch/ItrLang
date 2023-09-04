@@ -1190,20 +1190,11 @@ public class ItrLang {
             throw io.getCause();
         }
     }
-    // TODO change iterator code to lazy evaluation where possible
-    void iteratorOpCauchy(Sequence l0,Sequence r0,boolean wrapDiagonals, ArrayList<Integer> code) throws IOException {
-        RandomAccessSequence l=l0.asRASequence();
-        RandomAccessSequence r=r0.asRASequence();
-        for(int s=0;s<l.size()+r.size()-1;s++){
-            if(wrapDiagonals)
-                openStack();
-            for(int i=Math.max(0,s-r.size()+1);i<l.size()&&i<=s;i++){
-                pushValue(l.get(i));
-                pushValue(r.get(s-i));
-                interpret(code);
-            }
-            if(wrapDiagonals)
-                closeStack();
+    void iteratorOpCauchy(Sequence l,Sequence r,boolean wrapDiagonals, ArrayList<Integer> code) throws IOException {
+        try {
+            pushValue(ProductSequence.from(l.asRASequence(),r.asRASequence(),wrapDiagonals,(e,f) -> new ItrLang(e,f).tryRun(code).popOrDefault(Int.ZERO)));
+        }catch (UncheckedIOException io){
+            throw io.getCause();
         }
     }
 
@@ -2003,9 +1994,7 @@ public class ItrLang {
                     ip = readItrArgs(sourceCode, ip, c);
                     Sequence r = popValue().toSequence();
                     Sequence l = popValue().toSequence();
-                    openStack();
                     iteratorOpCauchy(l, r,false, c);
-                    closeStack();
                     // continue;
                 }
                 case 'Y' -> {//zip
@@ -2021,9 +2010,7 @@ public class ItrLang {
                     ip = readItrArgs(sourceCode, ip, c);
                     Sequence r = popValue().toSequence();
                     Sequence l = popValue().toSequence();
-                    openStack();
                     iteratorOpCauchy(l, r,true, c);
-                    closeStack();
                     // continue;
                 }
                 case '¶' -> {// power set
