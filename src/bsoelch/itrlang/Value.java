@@ -7,6 +7,9 @@ public interface Value {
     default Tuple toTuple() {
         return asTuple();
     }
+    default Sequence asSequence() {
+        return asTuple();
+    }
     default Sequence toSequence(){
         return toTuple();
     }

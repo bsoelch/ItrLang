@@ -92,7 +92,7 @@ public class ItrLang {
         throw new IllegalArgumentException("unsupported value type for invert: "+a.getClass().getName());
     }
 
-    static Value binaryNumberOp(Value a, Value b, BiFunction<NumberValue,NumberValue,Value> f,boolean truncate){
+    static Value binaryNumberOp(Value a,boolean lTruncate, Value b,boolean rTruncate, BiFunction<NumberValue,NumberValue,Value> f){
         if(a.isNumber()&&b.isNumber()){
             return f.apply((NumberValue)a,(NumberValue)b);
         }
@@ -103,7 +103,7 @@ public class ItrLang {
                 Tuple row=new Tuple();
                 row.ensureCapacity(((Matrix) a).ncolumns());
                 for(int j=0;j<((Matrix) a).ncolumns();j++)
-                    row.push(binaryNumberOp(((Matrix) a).at(i,j),b,f,truncate));
+                    row.push(binaryNumberOp(((Matrix) a).at(i,j),lTruncate,b,rTruncate,f));
                 res.push(row);
             }
             return new Matrix(res);
@@ -115,7 +115,7 @@ public class ItrLang {
                 Tuple row=new Tuple();
                 row.ensureCapacity(((Matrix) b).ncolumns());
                 for(int j=0;j<((Matrix) b).ncolumns();j++)
-                    row.push(binaryNumberOp(a,((Matrix)b).at(i,j),f,truncate));
+                    row.push(binaryNumberOp(a,lTruncate,((Matrix)b).at(i,j),rTruncate,f));
                 res.push(row);
             }
             return new Matrix(res);
@@ -129,19 +129,19 @@ public class ItrLang {
                 Tuple row=new Tuple();
                 row.ensureCapacity(columns);
                 for(int j=0;j<columns;j++)
-                   row.push(binaryNumberOp(((Matrix) a).at(i,j),((Matrix) b).at(i,j),f,truncate));
+                   row.push(binaryNumberOp(((Matrix) a).at(i,j),lTruncate,((Matrix) b).at(i,j),rTruncate,f));
                 res.push(row);
             }
             return new Matrix(res);
         }
         if(a.isNumber()&&b instanceof Sequence){
-            return MappedSequence.from((Sequence) b,x->binaryNumberOp(a,x,f,truncate));
+            return MappedSequence.from((Sequence) b,x->binaryNumberOp(a,lTruncate,x,rTruncate,f));
         }
         if(a instanceof Sequence&&b.isNumber()){
-            return MappedSequence.from((Sequence) a,x->binaryNumberOp(x,b,f,truncate));
+            return MappedSequence.from((Sequence) a,x->binaryNumberOp(x,lTruncate,b,rTruncate,f));
         }
         if(a instanceof Sequence&&b instanceof Sequence){
-            return BinaryOperationSequence.from((Sequence)a,(Sequence)b,truncate,(l,r)->binaryNumberOp(l,r,f,truncate));
+            return BinaryOperationSequence.from((Sequence)a,lTruncate,(Sequence)b,rTruncate,(l,r)->binaryNumberOp(l,lTruncate,r,rTruncate,f));
         }
         throw new IllegalArgumentException("unsupported operands of binary number operation: "+a.getClass().getName()+"   "+a.getClass().getName());
     }
@@ -157,7 +157,7 @@ public class ItrLang {
         throw new IllegalArgumentException("unsupported operands of addition: "+a.getClass().getName()+"   "+a.getClass().getName());
     }
     static Value add(Value a,Value b){
-        return binaryNumberOp(a,b,ItrLang::addNumbers,false);
+        return binaryNumberOp(a,false,b,false,ItrLang::addNumbers);
     }
     static NumberValue subtractNumbers(NumberValue a,NumberValue b){
         if(a instanceof Int&&b instanceof Int)
@@ -183,7 +183,7 @@ public class ItrLang {
         throw new IllegalArgumentException("unsupported operands of multiplication: "+a.getClass().getName()+"   "+a.getClass().getName());
     }
 
-    static Value binaryMatrixOp(Value a,Value b,BiFunction<Matrix,Matrix,Value> fM,BiFunction<NumberValue,NumberValue,Value> fN,boolean truncate){
+    static Value binaryMatrixOp(Value a,boolean lTruncate,Value b,boolean rTruncate,BiFunction<Matrix,Matrix,Value> fM,BiFunction<NumberValue,NumberValue,Value> fN){
         if(a.isNumber()&&b.isNumber()){
             return fN.apply((NumberValue) a, (NumberValue) b);
         }
@@ -196,7 +196,7 @@ public class ItrLang {
             for(int i=0;i<((Matrix) a).nrows();i++){
                 Tuple row=new Tuple();
                 row.ensureCapacity(((Matrix) a).ncolumns());
-                for(int j=0;j<((Matrix) a).ncolumns();j++)row.add(binaryMatrixOp(((Matrix) a).at(i,j),b,fM,fN,truncate));
+                for(int j=0;j<((Matrix) a).ncolumns();j++)row.add(binaryMatrixOp(((Matrix) a).at(i,j),lTruncate,b,rTruncate,fM,fN));
                 res.add(row);
             }
             return new Matrix(res);
@@ -207,30 +207,30 @@ public class ItrLang {
             for(int i=0;i<((Matrix) b).nrows();i++){
                 Tuple row=new Tuple();
                 row.ensureCapacity(((Matrix)b).ncolumns());
-                for(int j=0;j<((Matrix) b).ncolumns();j++)row.add(binaryMatrixOp(a,((Matrix) b).at(i,j),fM,fN,truncate));
+                for(int j=0;j<((Matrix) b).ncolumns();j++)row.add(binaryMatrixOp(a,lTruncate,((Matrix) b).at(i,j),rTruncate,fM,fN));
                 res.add(row);
             }
             return new Matrix(res);
         }
         if(a.isNumber()&&b instanceof Sequence){
-            return MappedSequence.from((Sequence) b,x->binaryMatrixOp(a,x,fM,fN,truncate));
+            return MappedSequence.from((Sequence) b,x->binaryMatrixOp(a,lTruncate,x,rTruncate,fM,fN));
         }
         if(a instanceof Sequence&&b.isNumber()){
-            return MappedSequence.from((Sequence) a,x->binaryMatrixOp(a,x,fM,fN,truncate));
+            return MappedSequence.from((Sequence) a,x->binaryMatrixOp(x,lTruncate,b,rTruncate,fM,fN));
         }
         if(a instanceof Sequence&&b instanceof Sequence){
-            return BinaryOperationSequence.from((Sequence)a,(Sequence)b,truncate,(l,r)->binaryMatrixOp(l,r,fM,fN,truncate));
+            return BinaryOperationSequence.from((Sequence)a,lTruncate,(Sequence)b,rTruncate,(l,r)->binaryMatrixOp(l,lTruncate,r,rTruncate,fM,fN));
         }
         throw new IllegalArgumentException("unsupported operands of binary matrix operation: "+a.getClass().getName()+"   "+a.getClass().getName());
     }
     static Value multiply(Value a,Value b){
-        return binaryMatrixOp(a,b,Matrix::multiply,ItrLang::multiplyNumbers,true);
+        return binaryMatrixOp(a,true,b,true,Matrix::multiply,ItrLang::multiplyNumbers);
     }
     static Value divide_left(Value a, Value b){
-        return binaryMatrixOp(a,b,Matrix::divide_left,(x, y)->realDivide(y,x),true);
+        return binaryMatrixOp(a,true,b,true,Matrix::divide_left,(x, y)->realDivide(y,x));
     }
     static Value divide_right(Value a, Value b){
-        return binaryMatrixOp(a,b,Matrix::divide_right,ItrLang::realDivide,true);
+        return binaryMatrixOp(a,true,b,true,Matrix::divide_right,ItrLang::realDivide);
     }
 
     static NumberValue realDivide(NumberValue a,NumberValue b){
@@ -320,9 +320,8 @@ public class ItrLang {
             }
             return applyFunction(multiply(applyFunction(a,"log"),b),"exp");
         }
-        //TODO sequence
         if(a instanceof Sequence&&b instanceof Sequence) {
-            return BinaryOperationSequence.from((Sequence) a, (Sequence) b, false, ItrLang::pow);
+            return BinaryOperationSequence.from((Sequence) a,false, (Sequence) b, false, ItrLang::pow);
         }
         if(a instanceof Sequence){
             return MappedSequence.from((Sequence) a,x->pow(x,b));
@@ -527,44 +526,37 @@ public class ItrLang {
         throw new UnsupportedOperationException("unsupported value type: "+arg.getClass().getName());
     }
 
-    static Value repeat(Value a,Value b){
-        // TODO sequence
+    static Sequence repeat(Value a,Value b){
         if(b.isNumber()){
-            return repeat(a.asTuple(),((NumberValue)b).asInt().intValueExact());
+            return repeat(a.asSequence(),((NumberValue)b).asInt());
         }else if(a.isNumber()){
-            return repeat(b.asTuple(),((NumberValue)a).asInt().intValueExact());
+            return repeat(b.asSequence(),((NumberValue)a).asInt());
         }
-        if(a instanceof Tuple&&b instanceof Tuple){
-            int l=Math.min(((Tuple) a).size(),((Tuple) b).size());
-            Tuple res=new Tuple();
-            for(int i=0;i<l;i++){
-                res.addAll(repeat(((Tuple) a).get(i),((Tuple) b).get(i)).asTuple());
-            }
-            return res;
+        if(a instanceof Matrix)
+            a=a.asTuple();
+        if(b instanceof Matrix)
+            b=b.asTuple();
+        if(a instanceof Sequence&&b instanceof Sequence){
+            return FlatMappedSequence.from(BinaryOperationSequence.from((Sequence) a,false,(Sequence) b,true, ItrLang::repeat), e->(Sequence) e);
         }
         throw new IllegalArgumentException("unsupported operands for repeat: "+a.getClass().getName()+"   "+a.getClass().getName());
     }
-    static Tuple repeat(Tuple a,int n){
-        final int aLen=a.size();
-        boolean reverse=false;
-        if(n==0)
-            return new Tuple();
-        if(n<0){
-            reverse=true;
-            n=-n;
-        }
-        Value[] data=new Value[aLen*n];
-        if(reverse){
-            for(int i=0;i<aLen;i++){
-                data[aLen-1-i]=a.get(i);
-            }
-        }else{
-            System.arraycopy(a.toArray(new Value[0]),0,data,0,aLen);
-        }
-        for(int i=1;i<n;i++){
-            System.arraycopy(data,0,data,i*aLen,aLen);
+    static Sequence reverse(Sequence s){
+        Tuple a=s.toTuple();
+        int aLen=a.size();
+        Value[] data=new Value[aLen];
+        for(int i=0;i<aLen;i++){
+            data[aLen-1-i]=a.get(i);
         }
         return new Tuple(data);
+    }
+    static Sequence repeat(Sequence s,BigInteger count){
+        if(count.signum()==0)
+            return new Tuple();
+        if(count.signum()<0){
+            return repeat(reverse(s),count.negate());
+        }
+        return RepeatSequence.from(s,count);
     }
     static Tuple concatenate(Tuple a, Tuple b){
         Value[] data=new Value[a.size()+b.size()];
@@ -1192,7 +1184,8 @@ public class ItrLang {
     }
     void iteratorOpZip(Sequence l,Sequence r, ArrayList<Integer> code) throws IOException {
         try {
-            pushValue(BinaryOperationSequence.from(l,r,false,(e,f) -> new ItrLang(e,f).tryRun(code).popOrDefault(Int.ZERO)));
+            pushValue(BinaryOperationSequence.from(l,false,r,false,
+                    (e,f) -> new ItrLang(e,f).tryRun(code).popOrDefault(Int.ZERO)));
         }catch (UncheckedIOException io){
             throw io.getCause();
         }
@@ -1243,7 +1236,7 @@ public class ItrLang {
             case 'l'->{ //log2/log10
                 Value a=popValue();
                 a=applyFunction(a,"log");
-                pushValue(binaryNumberOp(a,new Real(page==0?LOG2INV:LOG10INV),ItrLang::multiplyNumbers,true));
+                pushValue(binaryNumberOp(a,true,new Real(page==0?LOG2INV:LOG10INV),true,ItrLang::multiplyNumbers));
             }
             case 'r'->{ // random
                 if(page==0){
@@ -1506,78 +1499,78 @@ public class ItrLang {
                 case '-' -> {
                     Value b = popValue();
                     Value a = popValue();
-                    pushValue(binaryNumberOp(a, b, ItrLang::subtractNumbers,false));
+                    pushValue(binaryNumberOp(a,false,b,false,ItrLang::subtractNumbers));
                 }
                 case '·' -> {//point-wise multiplication
                     Value b = popValue();
                     Value a = popValue();
-                    pushValue(binaryNumberOp(a, b, ItrLang::multiplyNumbers,true));
+                    pushValue(binaryNumberOp(a,true,b,true,ItrLang::multiplyNumbers));
                 }
                 case '÷' -> {// point-wise (fractional) division
                     Value b = popValue();
                     Value a = popValue();
-                    pushValue(binaryNumberOp(a, b, ItrLang::realDivide,true));
+                    pushValue(binaryNumberOp(a,true, b,true, ItrLang::realDivide));
                 }
                 case ':' -> {//integer division
                     Value b = popValue();
                     Value a = popValue();
-                    pushValue(binaryNumberOp(a, b, ItrLang::intDivide,true));
+                    pushValue(binaryNumberOp(a,true, b,true,ItrLang::intDivide));
                 }
                 case '%' -> {// remainder
                     Value b = popValue();
                     Value a = popValue();
-                    pushValue(binaryNumberOp(a, b, ItrLang::remainder,false));//TODO? split truncate in leftTruncate/rightTruncate
+                    pushValue(binaryNumberOp(a,true,b,false,ItrLang::remainder));
                 }
                 case 'd' -> {//division and remainder
                     Value b = popValue();
                     Value a = popValue();
-                    pushValue(binaryNumberOp(a, b, ItrLang::remainder,false));
-                    pushValue(binaryNumberOp(a, b, ItrLang::intDivide,true));
+                    pushValue(binaryNumberOp(a,true,b,false,ItrLang::remainder));
+                    pushValue(binaryNumberOp(a,true,b,true,ItrLang::intDivide));
                 }
                 case '&' -> {// bit-wise and
                     Value b = popValue();
                     Value a = popValue();
-                    pushValue(binaryNumberOp(a, b, ItrLang::andNumbers,true));
+                    pushValue(binaryNumberOp(a,true,b,true,ItrLang::andNumbers));
                 }
                 case '|' -> {//  bit-wise or
                     Value b = popValue();
                     Value a = popValue();
-                    pushValue(binaryNumberOp(a, b, ItrLang::orNumbers,false));
+                    pushValue(binaryNumberOp(a,false,b,false,ItrLang::orNumbers));
                 }
                 case 'x' -> {//  bit-wise xor
                     Value b = popValue();
                     Value a = popValue();
-                    pushValue(binaryNumberOp(a, b, ItrLang::xorNumbers,false));
+                    pushValue(binaryNumberOp(a,false,b,false,ItrLang::xorNumbers));
                 }
                 case '>' -> {
                     Value b = popValue();
                     Value a = popValue();
-                    pushValue(binaryNumberOp(a, b, (x, y) -> new Int(BigInteger.valueOf(compareNumbers(x, y) > 0 ? 1 : 0)),false));
+                    pushValue(binaryNumberOp(a,false, b,false, (x, y) -> new Int(BigInteger.valueOf(compareNumbers(x, y) > 0 ? 1 : 0))));
                 }
                 case '=' -> {
                     Value b = popValue();
                     Value a = popValue();
-                    pushValue(binaryNumberOp(a, b, (x, y) -> new Int(BigInteger.valueOf(compareNumbers(x, y) == 0 ? 1 : 0)),false));
+                    pushValue(binaryNumberOp(a,false, b,false, (x, y) -> new Int(BigInteger.valueOf(compareNumbers(x, y) == 0 ? 1 : 0))));
                 }
                 case '<' -> {
                     Value b = popValue();
                     Value a = popValue();
-                    pushValue(binaryNumberOp(a, b, (x, y) -> new Int(BigInteger.valueOf(compareNumbers(x, y) < 0 ? 1 : 0)),false));
+                    pushValue(binaryNumberOp(a,false, b,false, (x, y) -> new Int(BigInteger.valueOf(compareNumbers(x, y) < 0 ? 1 : 0))));
                 }
                 case 'm' -> {//minimum
                     Value b = popValue();
                     Value a = popValue();
-                    pushValue(binaryNumberOp(a,b,(x,y)->compareNumbers(x,y)<0?x:y,false));
+                    pushValue(binaryNumberOp(a,false,b,false,(x,y)->compareNumbers(x,y)<0?x:y));
                 }
                 case 'w' -> {//maximum
                     Value b = popValue();
                     Value a = popValue();
-                    pushValue(binaryNumberOp(a,b,(x,y)->compareNumbers(x,y)>0?x:y,false));
+                    pushValue(binaryNumberOp(a,false,b,false,(x,y)->compareNumbers(x,y)>0?x:y));
                 }
                 case 'g' -> {//gcd
                     Value b = popValue();
                     Value a = popValue();
-                    pushValue(binaryNumberOp(a,b, ItrLang::gcd,false));
+                    pushValue(binaryNumberOp(a,false,b,false, ItrLang::gcd));
                 }
                 case '¬' -> {
                     Value a = popValue();
@@ -1773,11 +1766,11 @@ public class ItrLang {
                 }
                 case '½' -> {
                     Value a = popValue();
-                    pushValue(binaryNumberOp(a, new Int(BigInteger.valueOf(2)), ItrLang::realDivide,true));
+                    pushValue(binaryNumberOp(a,true,new Int(BigInteger.valueOf(2)),true,ItrLang::realDivide));
                 }
                 case 'i','j','k' -> {
                     Value a = popValue();
-                    pushValue(binaryNumberOp(a, Complex.I, ItrLang::multiply,true));
+                    pushValue(binaryNumberOp(a,true,Complex.I,true,ItrLang::multiply));
                 }
                 case '²' -> {
                     Value a = popValue();
@@ -1845,7 +1838,7 @@ public class ItrLang {
                 // vector operations
                 case '¡' -> {// TODO reverse rows and columns when reversing matrix
                     Tuple a = popValue().asTuple();
-                    pushValue(repeat(a, -1));
+                    pushValue(reverse(a));
                 }
                 case '°' -> {
                     Tuple b = popValue().asTuple();
@@ -1853,8 +1846,8 @@ public class ItrLang {
                     pushValue(concatenate(a, b));
                 }
                 case '×' -> {
-                    Tuple b = popValue().asTuple();
-                    Tuple a = popValue().asTuple();
+                    Value b = popValue();
+                    Value a = popValue();
                     pushValue(repeat(a, b));
                 }
                 case 'é' -> {
@@ -2062,7 +2055,8 @@ public class ItrLang {
                     Function<Tuple, Value>[] f = (Function<Tuple, Value>[]) new Function[1];
                     f[0] = (t) -> {
                         final Value[] res = new Value[]{Int.ZERO};
-                        t.forEach(e -> res[0] = binaryNumberOp(res[0], e instanceof Tuple ? f[0].apply((Tuple) e) : e, ItrLang::addNumbers,false));
+                        t.forEach(e -> res[0] = binaryNumberOp(res[0],false,
+                                e instanceof Tuple ? f[0].apply((Tuple) e) : e,false,ItrLang::addNumbers));
                         return res[0];
                     };
                     pushValue(f[0].apply((Tuple) v));

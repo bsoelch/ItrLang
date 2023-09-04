@@ -27,6 +27,20 @@ public class FlatMappedSequence implements Sequence{
             if(current==null){
                 this.currentItr=baseItr.hasNext()?map.apply(baseItr.next()).iterator():null;
             }
+            prepareItr();
+        }
+
+        void prepareItr(){
+            if(currentItr!=null){
+                while(!(currentItr.hasNext())){
+                    if(baseItr.hasNext())
+                        currentItr=map.apply(baseItr.next()).iterator();
+                    else{
+                        currentItr=null;
+                        break;
+                    }
+                }
+            }
         }
 
         @Override
@@ -36,14 +50,7 @@ public class FlatMappedSequence implements Sequence{
         @Override
         public Value next() {
             Value next=currentItr.next();
-            while(!(currentItr.hasNext())){
-                if(baseItr.hasNext())
-                    currentItr=map.apply(baseItr.next()).iterator();
-                else{
-                    currentItr=null;
-                    break;
-                }
-            }
+            prepareItr();
             return next;
         }
         @Override

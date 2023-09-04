@@ -7,9 +7,9 @@ import bsoelch.itrlang.Value;
 import java.util.function.BinaryOperator;
 
 public class BinaryOperationSequence implements Sequence{
-    public static Sequence from(Sequence l,Sequence r,boolean truncate, BinaryOperator<Value> map) {
+    public static Sequence from(Sequence l,boolean lTruncate,Sequence r,boolean rTruncate, BinaryOperator<Value> map) {
         // TODO RA version
-        return new BinaryOperationSequence(l,r, truncate, map);
+        return new BinaryOperationSequence(l,r, lTruncate&&rTruncate, map);// TODO l and r truncate
     }
 
     private final Sequence left,right;
@@ -26,8 +26,8 @@ public class BinaryOperationSequence implements Sequence{
     record MappedIterator(SequenceIterator leftItr,SequenceIterator rightItr,boolean truncate, BinaryOperator<Value> map) implements SequenceIterator {
         @Override
         public boolean hasNext() {
-                return truncate?(leftItr.hasNext()&&rightItr.hasNext()):(leftItr.hasNext()||rightItr.hasNext());
-            }
+            return truncate?(leftItr.hasNext()&&rightItr.hasNext()):(leftItr.hasNext()||rightItr.hasNext());
+        }
         @Override
         public Value next() {
             Value left=leftItr.hasNext()?leftItr.next():Int.ZERO;

@@ -19,6 +19,12 @@ public interface Sequence extends Value,Iterable<Value>{
             res.add(v);
         return res;
     }
+
+    @Override
+    default Sequence asSequence() {
+        return this;
+    }
+
     default RandomAccessSequence asRASequence(){
         return new BufferedSequence(this);
     }

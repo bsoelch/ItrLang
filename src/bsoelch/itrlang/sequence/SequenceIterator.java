@@ -7,7 +7,7 @@ import java.util.Iterator;
 public interface SequenceIterator extends Iterator<Value> {
     /**skip the next k elements*/
     default void skip(int k) {
-        while(hasNext()&&k>0){
+        while(hasNext()&&k-->0){
             next();
         }
     }
