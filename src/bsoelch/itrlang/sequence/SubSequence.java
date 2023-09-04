@@ -46,7 +46,7 @@ public class SubSequence implements RandomAccessSequence {
 
     @Override
     public boolean isFinite() {
-        return length.signum()<=0||base.isFinite();
+        return length.signum()>=0||base.isFinite();
     }
 
     @Override
